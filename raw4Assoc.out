@@ -1,0 +1,3609 @@
+[1] "SOURCE SUCCESSFUL"
+[1] "Within the SC media with genotype A subset there are 385 genes supported by two mRNA and two protein datasets"
+[1] "Union of background QTLs already processed and loading now..."
+[1] "PREPARING MAPPING OBJECTS AND DEALING WITH GENE SUPPORT"
+Directory already exists.
+[1] "CORRECTING FOR STRONG GENETIC EFFECTS ON OTHER CHROMOSOMES"
+  |                                                                              |                                                                      |   0%  |                                                                              |                                                                      |   1%  |                                                                              |=                                                                     |   1%  |                                                                              |=                                                                     |   2%  |                                                                              |==                                                                    |   2%  |                                                                              |==                                                                    |   3%  |                                                                              |===                                                                   |   4%  |                                                                              |===                                                                   |   5%  |                                                                              |====                                                                  |   5%  |                                                                              |====                                                                  |   6%  |                                                                              |=====                                                                 |   6%  |                                                                              |=====                                                                 |   7%  |                                                                              |=====                                                                 |   8%  |                                                                              |======                                                                |   8%  |                                                                              |======                                                                |   9%  |                                                                              |=======                                                               |   9%  |                                                                              |=======                                                               |  10%  |                                                                              |=======                                                               |  11%  |                                                                              |========                                                              |  11%  |                                                                              |========                                                              |  12%  |                                                                              |=========                                                             |  12%  |                                                                              |=========                                                             |  13%  |                                                                              |=========                                                             |  14%  |                                                                              |==========                                                            |  14%  |                                                                              |==========                                                            |  15%  |                                                                              |===========                                                           |  15%  |                                                                              |===========                                                           |  16%  |                                                                              |============                                                          |  17%  |                                                                              |============                                                          |  18%  |                                                                              |=============                                                         |  18%  |                                                                              |=============                                                         |  19%  |                                                                              |==============                                                        |  19%  |                                                                              |==============                                                        |  20%  |                                                                              |==============                                                        |  21%  |                                                                              |===============                                                       |  21%  |                                                                              |===============                                                       |  22%  |                                                                              |================                                                      |  22%  |                                                                              |================                                                      |  23%  |                                                                              |=================                                                     |  24%  |                                                                              |=================                                                     |  25%  |                                                                              |==================                                                    |  25%  |                                                                              |==================                                                    |  26%  |                                                                              |===================                                                   |  26%  |                                                                              |===================                                                   |  27%  |                                                                              |===================                                                   |  28%  |                                                                              |====================                                                  |  28%  |                                                                              |====================                                                  |  29%  |                                                                              |=====================                                                 |  29%  |                                                                              |=====================                                                 |  30%  |                                                                              |=====================                                                 |  31%  |                                                                              |======================                                                |  31%  |                                                                              |======================                                                |  32%  |                                                                              |=======================                                               |  32%  |                                                                              |=======================                                               |  33%  |                                                                              |=======================                                               |  34%  |                                                                              |========================                                              |  34%  |                                                                              |========================                                              |  35%  |                                                                              |=========================                                             |  35%  |                                                                              |=========================                                             |  36%  |                                                                              |==========================                                            |  37%  |                                                                              |==========================                                            |  38%  |                                                                              |===========================                                           |  38%  |                                                                              |===========================                                           |  39%  |                                                                              |============================                                          |  39%  |                                                                              |============================                                          |  40%  |                                                                              |============================                                          |  41%  |                                                                              |=============================                                         |  41%  |                                                                              |=============================                                         |  42%  |                                                                              |==============================                                        |  42%  |                                                                              |==============================                                        |  43%  |                                                                              |===============================                                       |  44%  |                                                                              |===============================                                       |  45%  |                                                                              |================================                                      |  45%  |                                                                              |================================                                      |  46%  |                                                                              |=================================                                     |  46%  |                                                                              |=================================                                     |  47%  |                                                                              |=================================                                     |  48%  |                                                                              |==================================                                    |  48%  |                                                                              |==================================                                    |  49%  |                                                                              |===================================                                   |  49%  |                                                                              |===================================                                   |  50%  |                                                                              |===================================                                   |  51%  |                                                                              |====================================                                  |  51%  |                                                                              |====================================                                  |  52%  |                                                                              |=====================================                                 |  52%  |                                                                              |=====================================                                 |  53%  |                                                                              |=====================================                                 |  54%  |                                                                              |======================================                                |  54%  |                                                                              |======================================                                |  55%  |                                                                              |=======================================                               |  55%  |                                                                              |=======================================                               |  56%  |                                                                              |========================================                              |  57%  |                                                                              |========================================                              |  58%  |                                                                              |=========================================                             |  58%  |                                                                              |=========================================                             |  59%  |                                                                              |==========================================                            |  59%  |                                                                              |==========================================                            |  60%  |                                                                              |==========================================                            |  61%  |                                                                              |===========================================                           |  61%  |                                                                              |===========================================                           |  62%  |                                                                              |============================================                          |  62%  |                                                                              |============================================                          |  63%  |                                                                              |=============================================                         |  64%  |                                                                              |=============================================                         |  65%  |                                                                              |==============================================                        |  65%  |                                                                              |==============================================                        |  66%  |                                                                              |===============================================                       |  66%  |                                                                              |===============================================                       |  67%  |                                                                              |===============================================                       |  68%  |                                                                              |================================================                      |  68%  |                                                                              |================================================                      |  69%  |                                                                              |=================================================                     |  69%  |                                                                              |=================================================                     |  70%  |                                                                              |=================================================                     |  71%  |                                                                              |==================================================                    |  71%  |                                                                              |==================================================                    |  72%  |                                                                              |===================================================                   |  72%  |                                                                              |===================================================                   |  73%  |                                                                              |===================================================                   |  74%  |                                                                              |====================================================                  |  74%  |                                                                              |====================================================                  |  75%  |                                                                              |=====================================================                 |  75%  |                                                                              |=====================================================                 |  76%  |                                                                              |======================================================                |  77%  |                                                                              |======================================================                |  78%  |                                                                              |=======================================================               |  78%  |                                                                              |=======================================================               |  79%  |                                                                              |========================================================              |  79%  |                                                                              |========================================================              |  80%  |                                                                              |========================================================              |  81%  |                                                                              |=========================================================             |  81%  |                                                                              |=========================================================             |  82%  |                                                                              |==========================================================            |  82%  |                                                                              |==========================================================            |  83%  |                                                                              |===========================================================           |  84%  |                                                                              |===========================================================           |  85%  |                                                                              |============================================================          |  85%  |                                                                              |============================================================          |  86%  |                                                                              |=============================================================         |  86%  |                                                                              |=============================================================         |  87%  |                                                                              |=============================================================         |  88%  |                                                                              |==============================================================        |  88%  |                                                                              |==============================================================        |  89%  |                                                                              |===============================================================       |  89%  |                                                                              |===============================================================       |  90%  |                                                                              |===============================================================       |  91%  |                                                                              |================================================================      |  91%  |                                                                              |================================================================      |  92%  |                                                                              |=================================================================     |  92%  |                                                                              |=================================================================     |  93%  |                                                                              |=================================================================     |  94%  |                                                                              |==================================================================    |  94%  |                                                                              |==================================================================    |  95%  |                                                                              |===================================================================   |  95%  |                                                                              |===================================================================   |  96%  |                                                                              |====================================================================  |  97%  |                                                                              |====================================================================  |  98%  |                                                                              |===================================================================== |  98%  |                                                                              |===================================================================== |  99%  |                                                                              |======================================================================|  99%  |                                                                              |======================================================================| 100%
+[1] "FINALIZING ASSOCIATION PREPARATIONS"
+[1] "BEGINNING UNFILTERED ASSOCIATIONS AT SELECT MARKERS"
+[1] "mapping associations of marker #1 of 900 at position chrXIII:445007"
+[1] "mapping associations of marker #2 of 900 at position chrXIII:448556"
+[1] "mapping associations of marker #3 of 900 at position chrXIII:457013"
+[1] "mapping associations of marker #4 of 900 at position chrXIII:458388"
+[1] "mapping associations of marker #5 of 900 at position chrXIII:459519"
+[1] "mapping associations of marker #6 of 900 at position chrXIII:459995"
+[1] "mapping associations of marker #7 of 900 at position chrXIII:460192"
+[1] "mapping associations of marker #8 of 900 at position chrXIII:466416"
+[1] "mapping associations of marker #9 of 900 at position chrXIII:474399"
+[1] "mapping associations of marker #10 of 900 at position chrXIII:478297"
+[1] "mapping associations of marker #11 of 900 at position chrXIII:481103"
+[1] "mapping associations of marker #12 of 900 at position chrXIII:484290"
+[1] "mapping associations of marker #13 of 900 at position chrXIII:492459"
+[1] "mapping associations of marker #14 of 900 at position chrXIII:496955"
+[1] "mapping associations of marker #15 of 900 at position chrXIII:502616"
+[1] "mapping associations of marker #16 of 900 at position chrXIII:508389"
+[1] "mapping associations of marker #17 of 900 at position chrXIII:511679"
+[1] "mapping associations of marker #18 of 900 at position chrXIII:513927"
+[1] "mapping associations of marker #19 of 900 at position chrXIII:516109"
+[1] "mapping associations of marker #20 of 900 at position chrXIII:519684"
+[1] "mapping associations of marker #21 of 900 at position chrXIII:524221"
+[1] "mapping associations of marker #22 of 900 at position chrXIII:526917"
+[1] "mapping associations of marker #23 of 900 at position chrXIII:531104"
+[1] "mapping associations of marker #24 of 900 at position chrXIII:537924"
+[1] "mapping associations of marker #25 of 900 at position chrXIII:541424"
+[1] "mapping associations of marker #26 of 900 at position chrXIII:542130"
+[1] "mapping associations of marker #27 of 900 at position chrXIII:542926"
+[1] "mapping associations of marker #28 of 900 at position chrXIII:544007"
+[1] "mapping associations of marker #29 of 900 at position chrXIII:545520"
+[1] "mapping associations of marker #30 of 900 at position chrXIII:548999"
+[1] "mapping associations of marker #31 of 900 at position chrXIII:552041"
+[1] "mapping associations of marker #32 of 900 at position chrXIII:554421"
+[1] "mapping associations of marker #33 of 900 at position chrXIII:554664"
+[1] "mapping associations of marker #40 of 900 at position chrXIII:563933"
+[1] "mapping associations of marker #38 of 900 at position chrXIII:560210"
+[1] "mapping associations of marker #41 of 900 at position chrXIII:589273"
+[1] "mapping associations of marker #34 of 900 at position chrXIII:555036"
+[1] "mapping associations of marker #36 of 900 at position chrXIII:557425"
+[1] "mapping associations of marker #45 of 900 at position chrXIII:603083"
+[1] "mapping associations of marker #44 of 900 at position chrXIII:595697"
+[1] "mapping associations of marker #62 of 900 at position chrXIII:665727"
+[1] "mapping associations of marker #50 of 900 at position chrXIII:620593"
+[1] "mapping associations of marker #42 of 900 at position chrXIII:591795"
+[1] "mapping associations of marker #63 of 900 at position chrXIII:667334"
+[1] "mapping associations of marker #49 of 900 at position chrXIII:620255"
+[1] "mapping associations of marker #60 of 900 at position chrXIII:664080"
+[1] "mapping associations of marker #52 of 900 at position chrXIII:626430"
+[1] "mapping associations of marker #58 of 900 at position chrXIII:661308"
+[1] "mapping associations of marker #57 of 900 at position chrXIII:659142"
+[1] "mapping associations of marker #35 of 900 at position chrXIII:556437"
+[1] "mapping associations of marker #54 of 900 at position chrXIII:637712"
+[1] "mapping associations of marker #47 of 900 at position chrXIII:605048"
+[1] "mapping associations of marker #64 of 900 at position chrXIII:670426"
+[1] "mapping associations of marker #53 of 900 at position chrXIII:628415"
+[1] "mapping associations of marker #43 of 900 at position chrXIII:594280"
+[1] "mapping associations of marker #46 of 900 at position chrXIII:603801"
+[1] "mapping associations of marker #56 of 900 at position chrXIII:655922"
+[1] "mapping associations of marker #61 of 900 at position chrXIII:664741"
+[1] "mapping associations of marker #59 of 900 at position chrXIII:663000"
+[1] "mapping associations of marker #39 of 900 at position chrXIII:562601"
+[1] "mapping associations of marker #51 of 900 at position chrXIII:621124"
+[1] "mapping associations of marker #55 of 900 at position chrXIII:644973"
+[1] "mapping associations of marker #37 of 900 at position chrXIII:558486"
+[1] "mapping associations of marker #48 of 900 at position chrXIII:612355"
+[1] "mapping associations of marker #65 of 900 at position chrXIII:673803"
+[1] "mapping associations of marker #73 of 900 at position chrXIII:698988"
+[1] "mapping associations of marker #68 of 900 at position chrXIII:685087"
+[1] "mapping associations of marker #66 of 900 at position chrXIII:673975"
+[1] "mapping associations of marker #81 of 900 at position chrXIII:723720"
+[1] "mapping associations of marker #76 of 900 at position chrXIII:702308"
+[1] "mapping associations of marker #92 of 900 at position chrXIII:780034"
+[1] "mapping associations of marker #72 of 900 at position chrXIII:697086"
+[1] "mapping associations of marker #75 of 900 at position chrXIII:700956"
+[1] "mapping associations of marker #82 of 900 at position chrXIII:727057"
+[1] "mapping associations of marker #70 of 900 at position chrXIII:685330"
+[1] "mapping associations of marker #94 of 900 at position chrXIII:784149"
+[1] "mapping associations of marker #90 of 900 at position chrXIII:773437"
+[1] "mapping associations of marker #95 of 900 at position chrXIII:788656"
+[1] "mapping associations of marker #67 of 900 at position chrXIII:678565"
+[1] "mapping associations of marker #74 of 900 at position chrXIII:699631"
+[1] "mapping associations of marker #77 of 900 at position chrXIII:704115"
+[1] "mapping associations of marker #89 of 900 at position chrXIII:761318"
+[1] "mapping associations of marker #93 of 900 at position chrXIII:781016"
+[1] "mapping associations of marker #96 of 900 at position chrXIII:793818"
+[1] "mapping associations of marker #84 of 900 at position chrXIII:740218"
+[1] "mapping associations of marker #86 of 900 at position chrXIII:747051"
+[1] "mapping associations of marker #83 of 900 at position chrXIII:735637"
+[1] "mapping associations of marker #91 of 900 at position chrXIII:775628"
+[1] "mapping associations of marker #85 of 900 at position chrXIII:743797"
+[1] "mapping associations of marker #69 of 900 at position chrXIII:685138"
+[1] "mapping associations of marker #87 of 900 at position chrXIII:754796"
+[1] "mapping associations of marker #79 of 900 at position chrXIII:715098"
+[1] "mapping associations of marker #71 of 900 at position chrXIII:690710"
+[1] "mapping associations of marker #80 of 900 at position chrXIII:716963"
+[1] "mapping associations of marker #88 of 900 at position chrXIII:759805"
+[1] "mapping associations of marker #78 of 900 at position chrXIII:706506"
+[1] "mapping associations of marker #97 of 900 at position chrXIII:799197"
+[1] "mapping associations of marker #105 of 900 at position chrXIII:842921"
+[1] "mapping associations of marker #114 of 900 at position chrXIII:862051"
+[1] "mapping associations of marker #100 of 900 at position chrXIII:819018"
+[1] "mapping associations of marker #122 of 900 at position chrXIII:896227"
+[1] "mapping associations of marker #126 of 900 at position chrXIII:903826"
+[1] "mapping associations of marker #127 of 900 at position chrXIII:904791"
+[1] "mapping associations of marker #108 of 900 at position chrXIII:849392"
+[1] "mapping associations of marker #115 of 900 at position chrXIII:862695"
+[1] "mapping associations of marker #124 of 900 at position chrXIII:899812"
+[1] "mapping associations of marker #116 of 900 at position chrXIII:864754"
+[1] "mapping associations of marker #104 of 900 at position chrXIII:832641"
+[1] "mapping associations of marker #102 of 900 at position chrXIII:820446"
+[1] "mapping associations of marker #109 of 900 at position chrXIII:855635"
+[1] "mapping associations of marker #113 of 900 at position chrXIII:860181"
+[1] "mapping associations of marker #119 of 900 at position chrXIII:876530"
+[1] "mapping associations of marker #98 of 900 at position chrXIII:812150"
+[1] "mapping associations of marker #118 of 900 at position chrXIII:873664"
+[1] "mapping associations of marker #128 of 900 at position chrXIII:912021"
+[1] "mapping associations of marker #99 of 900 at position chrXIII:817301"
+[1] "mapping associations of marker #107 of 900 at position chrXIII:845646"
+[1] "mapping associations of marker #121 of 900 at position chrXIII:894039"
+[1] "mapping associations of marker #123 of 900 at position chrXIII:897605"
+[1] "mapping associations of marker #117 of 900 at position chrXIII:868389"
+[1] "mapping associations of marker #125 of 900 at position chrXIII:902532"
+[1] "mapping associations of marker #112 of 900 at position chrXIII:859746"
+[1] "mapping associations of marker #111 of 900 at position chrXIII:859500"
+[1] "mapping associations of marker #101 of 900 at position chrXIII:819594"
+[1] "mapping associations of marker #103 of 900 at position chrXIII:821488"
+[1] "mapping associations of marker #106 of 900 at position chrXIII:845058"
+[1] "mapping associations of marker #120 of 900 at position chrXIII:892255"
+[1] "mapping associations of marker #110 of 900 at position chrXIII:858420"
+[1] "mapping associations of marker #129 of 900 at position chrXIV:16090"
+[1] "mapping associations of marker #146 of 900 at position chrXIV:54504"
+[1] "mapping associations of marker #137 of 900 at position chrXIV:41680"
+[1] "mapping associations of marker #154 of 900 at position chrXIV:78487"
+[1] "mapping associations of marker #159 of 900 at position chrXIV:105255"
+[1] "mapping associations of marker #147 of 900 at position chrXIV:58317"
+[1] "mapping associations of marker #132 of 900 at position chrXIV:26783"
+[1] "mapping associations of marker #158 of 900 at position chrXIV:105051"
+[1] "mapping associations of marker #136 of 900 at position chrXIV:41218"
+[1] "mapping associations of marker #148 of 900 at position chrXIV:60667"
+[1] "mapping associations of marker #145 of 900 at position chrXIV:52985"
+[1] "mapping associations of marker #130 of 900 at position chrXIV:19517"
+[1] "mapping associations of marker #134 of 900 at position chrXIV:29975"
+[1] "mapping associations of marker #156 of 900 at position chrXIV:87852"
+[1] "mapping associations of marker #139 of 900 at position chrXIV:49610"
+[1] "mapping associations of marker #144 of 900 at position chrXIV:51825"
+[1] "mapping associations of marker #153 of 900 at position chrXIV:77525"
+[1] "mapping associations of marker #150 of 900 at position chrXIV:67383"
+[1] "mapping associations of marker #160 of 900 at position chrXIV:105689"
+[1] "mapping associations of marker #155 of 900 at position chrXIV:86730"
+[1] "mapping associations of marker #131 of 900 at position chrXIV:25123"
+[1] "mapping associations of marker #151 of 900 at position chrXIV:77017"
+[1] "mapping associations of marker #141 of 900 at position chrXIV:50288"
+[1] "mapping associations of marker #143 of 900 at position chrXIV:51041"
+[1] "mapping associations of marker #157 of 900 at position chrXIV:94896"
+[1] "mapping associations of marker #133 of 900 at position chrXIV:26953"
+[1] "mapping associations of marker #149 of 900 at position chrXIV:65938"
+[1] "mapping associations of marker #135 of 900 at position chrXIV:33540"
+[1] "mapping associations of marker #140 of 900 at position chrXIV:50094"
+[1] "mapping associations of marker #152 of 900 at position chrXIV:77145"
+[1] "mapping associations of marker #138 of 900 at position chrXIV:46184"
+[1] "mapping associations of marker #142 of 900 at position chrXIV:50927"
+[1] "mapping associations of marker #178 of 900 at position chrXIV:168984"
+[1] "mapping associations of marker #161 of 900 at position chrXIV:106690"
+[1] "mapping associations of marker #169 of 900 at position chrXIV:126744"
+[1] "mapping associations of marker #185 of 900 at position chrXIV:189723"
+[1] "mapping associations of marker #186 of 900 at position chrXIV:199105"
+[1] "mapping associations of marker #191 of 900 at position chrXIV:220663"
+[1] "mapping associations of marker #179 of 900 at position chrXIV:178487"
+[1] "mapping associations of marker #171 of 900 at position chrXIV:145164"
+[1] "mapping associations of marker #182 of 900 at position chrXIV:185626"
+[1] "mapping associations of marker #164 of 900 at position chrXIV:111323"
+[1] "mapping associations of marker #177 of 900 at position chrXIV:166587"
+[1] "mapping associations of marker #162 of 900 at position chrXIV:107791"
+[1] "mapping associations of marker #176 of 900 at position chrXIV:165144"
+[1] "mapping associations of marker #168 of 900 at position chrXIV:123935"
+[1] "mapping associations of marker #180 of 900 at position chrXIV:184703"
+[1] "mapping associations of marker #166 of 900 at position chrXIV:118249"
+[1] "mapping associations of marker #188 of 900 at position chrXIV:202394"
+[1] "mapping associations of marker #163 of 900 at position chrXIV:109533"
+[1] "mapping associations of marker #190 of 900 at position chrXIV:216647"
+[1] "mapping associations of marker #165 of 900 at position chrXIV:114147"
+[1] "mapping associations of marker #192 of 900 at position chrXIV:220950"
+[1] "mapping associations of marker #167 of 900 at position chrXIV:121619"
+[1] "mapping associations of marker #184 of 900 at position chrXIV:187320"
+[1] "mapping associations of marker #173 of 900 at position chrXIV:156755"
+[1] "mapping associations of marker #183 of 900 at position chrXIV:185846"
+[1] "mapping associations of marker #175 of 900 at position chrXIV:163967"
+[1] "mapping associations of marker #172 of 900 at position chrXIV:151127"
+[1] "mapping associations of marker #187 of 900 at position chrXIV:201973"
+[1] "mapping associations of marker #189 of 900 at position chrXIV:205874"
+[1] "mapping associations of marker #170 of 900 at position chrXIV:140943"
+[1] "mapping associations of marker #181 of 900 at position chrXIV:185261"
+[1] "mapping associations of marker #174 of 900 at position chrXIV:162494"
+[1] "mapping associations of marker #210 of 900 at position chrXIV:299515"
+[1] "mapping associations of marker #193 of 900 at position chrXIV:225776"
+[1] "mapping associations of marker #211 of 900 at position chrXIV:303906"
+[1] "mapping associations of marker #203 of 900 at position chrXIV:258590"
+[1] "mapping associations of marker #201 of 900 at position chrXIV:254474"
+[1] "mapping associations of marker #200 of 900 at position chrXIV:242111"
+[1] "mapping associations of marker #214 of 900 at position chrXIV:314163"
+[1] "mapping associations of marker #223 of 900 at position chrXIV:335123"
+[1] "mapping associations of marker #212 of 900 at position chrXIV:309784"
+[1] "mapping associations of marker #194 of 900 at position chrXIV:229890"
+[1] "mapping associations of marker #197 of 900 at position chrXIV:233507"
+[1] "mapping associations of marker #208 of 900 at position chrXIV:294413"
+[1] "mapping associations of marker #217 of 900 at position chrXIV:330713"
+[1] "mapping associations of marker #209 of 900 at position chrXIV:295050"
+[1] "mapping associations of marker #218 of 900 at position chrXIV:331401"
+[1] "mapping associations of marker #199 of 900 at position chrXIV:241114"
+[1] "mapping associations of marker #220 of 900 at position chrXIV:332894"
+[1] "mapping associations of marker #198 of 900 at position chrXIV:234916"
+[1] "mapping associations of marker #196 of 900 at position chrXIV:232508"
+[1] "mapping associations of marker #204 of 900 at position chrXIV:263896"
+[1] "mapping associations of marker #224 of 900 at position chrXIV:335872"
+[1] "mapping associations of marker #195 of 900 at position chrXIV:231034"
+[1] "mapping associations of marker #216 of 900 at position chrXIV:322462"
+[1] "mapping associations of marker #219 of 900 at position chrXIV:331752"
+[1] "mapping associations of marker #205 of 900 at position chrXIV:281196"
+[1] "mapping associations of marker #202 of 900 at position chrXIV:254882"
+[1] "mapping associations of marker #215 of 900 at position chrXIV:318991"
+[1] "mapping associations of marker #222 of 900 at position chrXIV:333895"
+[1] "mapping associations of marker #207 of 900 at position chrXIV:288822"
+[1] "mapping associations of marker #213 of 900 at position chrXIV:312060"
+[1] "mapping associations of marker #221 of 900 at position chrXIV:333469"
+[1] "mapping associations of marker #206 of 900 at position chrXIV:287504"
+[1] "mapping associations of marker #242 of 900 at position chrXIV:396880"
+[1] "mapping associations of marker #225 of 900 at position chrXIV:336941"
+[1] "mapping associations of marker #235 of 900 at position chrXIV:367094"
+[1] "mapping associations of marker #246 of 900 at position chrXIV:408355"
+[1] "mapping associations of marker #233 of 900 at position chrXIV:366158"
+[1] "mapping associations of marker #255 of 900 at position chrXIV:453089"
+[1] "mapping associations of marker #232 of 900 at position chrXIV:365714"
+[1] "mapping associations of marker #229 of 900 at position chrXIV:354131"
+[1] "mapping associations of marker #243 of 900 at position chrXIV:399956"
+[1] "mapping associations of marker #244 of 900 at position chrXIV:401891"
+[1] "mapping associations of marker #250 of 900 at position chrXIV:422746"
+[1] "mapping associations of marker #231 of 900 at position chrXIV:358507"
+[1] "mapping associations of marker #240 of 900 at position chrXIV:391752"
+[1] "mapping associations of marker #228 of 900 at position chrXIV:350501"
+[1] "mapping associations of marker #252 of 900 at position chrXIV:437955"
+[1] "mapping associations of marker #249 of 900 at position chrXIV:418168"
+[1] "mapping associations of marker #251 of 900 at position chrXIV:431063"
+[1] "mapping associations of marker #226 of 900 at position chrXIV:340079"
+[1] "mapping associations of marker #236 of 900 at position chrXIV:367558"
+[1] "mapping associations of marker #241 of 900 at position chrXIV:393022"
+[1] "mapping associations of marker #230 of 900 at position chrXIV:356361"
+[1] "mapping associations of marker #234 of 900 at position chrXIV:366458"
+[1] "mapping associations of marker #237 of 900 at position chrXIV:368183"
+[1] "mapping associations of marker #227 of 900 at position chrXIV:340447"
+[1] "mapping associations of marker #254 of 900 at position chrXIV:445766"
+[1] "mapping associations of marker #248 of 900 at position chrXIV:413686"
+[1] "mapping associations of marker #247 of 900 at position chrXIV:408945"
+[1] "mapping associations of marker #256 of 900 at position chrXIV:453937"
+[1] "mapping associations of marker #239 of 900 at position chrXIV:385702"
+[1] "mapping associations of marker #245 of 900 at position chrXIV:407114"
+[1] "mapping associations of marker #253 of 900 at position chrXIV:442265"
+[1] "mapping associations of marker #238 of 900 at position chrXIV:369029"
+[1] "mapping associations of marker #257 of 900 at position chrXIV:457243"
+[1] "mapping associations of marker #265 of 900 at position chrXIV:486859"
+[1] "mapping associations of marker #267 of 900 at position chrXIV:492375"
+[1] "mapping associations of marker #261 of 900 at position chrXIV:480472"
+[1] "mapping associations of marker #264 of 900 at position chrXIV:484904"
+[1] "mapping associations of marker #278 of 900 at position chrXIV:543643"
+[1] "mapping associations of marker #274 of 900 at position chrXIV:533282"
+[1] "mapping associations of marker #287 of 900 at position chrXIV:603545"
+[1] "mapping associations of marker #275 of 900 at position chrXIV:533533"
+[1] "mapping associations of marker #283 of 900 at position chrXIV:584635"
+[1] "mapping associations of marker #284 of 900 at position chrXIV:587725"
+[1] "mapping associations of marker #260 of 900 at position chrXIV:478701"
+[1] "mapping associations of marker #276 of 900 at position chrXIV:539903"
+[1] "mapping associations of marker #268 of 900 at position chrXIV:495918"
+[1] "mapping associations of marker #272 of 900 at position chrXIV:527014"
+[1] "mapping associations of marker #282 of 900 at position chrXIV:575525"
+[1] "mapping associations of marker #263 of 900 at position chrXIV:481896"
+[1] "mapping associations of marker #258 of 900 at position chrXIV:465005"
+[1] "mapping associations of marker #273 of 900 at position chrXIV:532790"
+[1] "mapping associations of marker #281 of 900 at position chrXIV:558289"
+[1] "mapping associations of marker #262 of 900 at position chrXIV:481081"
+[1] "mapping associations of marker #269 of 900 at position chrXIV:509173"
+[1] "mapping associations of marker #280 of 900 at position chrXIV:551869"
+[1] "mapping associations of marker #288 of 900 at position chrXIV:603709"
+[1] "mapping associations of marker #271 of 900 at position chrXIV:518602"
+[1] "mapping associations of marker #286 of 900 at position chrXIV:602860"
+[1] "mapping associations of marker #279 of 900 at position chrXIV:544303"
+[1] "mapping associations of marker #259 of 900 at position chrXIV:465187"
+[1] "mapping associations of marker #266 of 900 at position chrXIV:488598"
+[1] "mapping associations of marker #285 of 900 at position chrXIV:593213"
+[1] "mapping associations of marker #277 of 900 at position chrXIV:541405"
+[1] "mapping associations of marker #270 of 900 at position chrXIV:517269"
+[1] "mapping associations of marker #297 of 900 at position chrXIV:649810"
+[1] "mapping associations of marker #299 of 900 at position chrXIV:655138"
+[1] "mapping associations of marker #296 of 900 at position chrXIV:646585"
+[1] "mapping associations of marker #310 of 900 at position chrXIV:688572"
+[1] "mapping associations of marker #293 of 900 at position chrXIV:637729"
+[1] "mapping associations of marker #289 of 900 at position chrXIV:611511"
+[1] "mapping associations of marker #315 of 900 at position chrXIV:694765"
+[1] "mapping associations of marker #308 of 900 at position chrXIV:677203"
+[1] "mapping associations of marker #319 of 900 at position chrXIV:701961"
+[1] "mapping associations of marker #306 of 900 at position chrXIV:676368"
+[1] "mapping associations of marker #307 of 900 at position chrXIV:676470"
+[1] "mapping associations of marker #316 of 900 at position chrXIV:695952"
+[1] "mapping associations of marker #300 of 900 at position chrXIV:663083"
+[1] "mapping associations of marker #292 of 900 at position chrXIV:629832"
+[1] "mapping associations of marker #304 of 900 at position chrXIV:671892"
+[1] "mapping associations of marker #314 of 900 at position chrXIV:694273"
+[1] "mapping associations of marker #313 of 900 at position chrXIV:692612"
+[1] "mapping associations of marker #290 of 900 at position chrXIV:614336"
+[1] "mapping associations of marker #312 of 900 at position chrXIV:691115"
+[1] "mapping associations of marker #295 of 900 at position chrXIV:644949"
+[1] "mapping associations of marker #301 of 900 at position chrXIV:665036"
+[1] "mapping associations of marker #294 of 900 at position chrXIV:639287"
+[1] "mapping associations of marker #303 of 900 at position chrXIV:668533"
+[1] "mapping associations of marker #305 of 900 at position chrXIV:674210"
+[1] "mapping associations of marker #318 of 900 at position chrXIV:698660"
+[1] "mapping associations of marker #320 of 900 at position chrXIV:706528"
+[1] "mapping associations of marker #298 of 900 at position chrXIV:653557"
+[1] "mapping associations of marker #317 of 900 at position chrXIV:696989"
+[1] "mapping associations of marker #291 of 900 at position chrXIV:623405"
+[1] "mapping associations of marker #311 of 900 at position chrXIV:689029"
+[1] "mapping associations of marker #302 of 900 at position chrXIV:667216"
+[1] "mapping associations of marker #309 of 900 at position chrXIV:686681"
+[1] "mapping associations of marker #329 of 900 at position chrXIV:730475"
+[1] "mapping associations of marker #328 of 900 at position chrXIV:728933"
+[1] "mapping associations of marker #347 of 900 at position chrXV:30265"
+[1] "mapping associations of marker #331 of 900 at position chrXIV:735429"
+[1] "mapping associations of marker #338 of 900 at position chrXIV:769532"
+[1] "mapping associations of marker #340 of 900 at position chrXV:14884"
+[1] "mapping associations of marker #342 of 900 at position chrXV:29645"
+[1] "mapping associations of marker #348 of 900 at position chrXV:30338"
+[1] "mapping associations of marker #351 of 900 at position chrXV:40304"
+[1] "mapping associations of marker #321 of 900 at position chrXIV:707137"
+[1] "mapping associations of marker #325 of 900 at position chrXIV:716298"
+[1] "mapping associations of marker #339 of 900 at position chrXIV:778347"
+[1] "mapping associations of marker #332 of 900 at position chrXIV:737420"
+[1] "mapping associations of marker #346 of 900 at position chrXV:30248"
+[1] "mapping associations of marker #333 of 900 at position chrXIV:741004"
+[1] "mapping associations of marker #322 of 900 at position chrXIV:709906"
+[1] "mapping associations of marker #336 of 900 at position chrXIV:752087"
+[1] "mapping associations of marker #344 of 900 at position chrXV:29825"
+[1] "mapping associations of marker #345 of 900 at position chrXV:29976"
+[1] "mapping associations of marker #327 of 900 at position chrXIV:722746"
+[1] "mapping associations of marker #324 of 900 at position chrXIV:713668"
+[1] "mapping associations of marker #326 of 900 at position chrXIV:716564"
+[1] "mapping associations of marker #335 of 900 at position chrXIV:744856"
+[1] "mapping associations of marker #352 of 900 at position chrXV:40593"
+[1] "mapping associations of marker #337 of 900 at position chrXIV:754366"
+[1] "mapping associations of marker #350 of 900 at position chrXV:39805"
+[1] "mapping associations of marker #334 of 900 at position chrXIV:743336"
+[1] "mapping associations of marker #349 of 900 at position chrXV:36403"
+[1] "mapping associations of marker #330 of 900 at position chrXIV:733073"
+[1] "mapping associations of marker #323 of 900 at position chrXIV:710457"
+[1] "mapping associations of marker #341 of 900 at position chrXV:19376"
+[1] "mapping associations of marker #343 of 900 at position chrXV:29810"
+[1] "mapping associations of marker #361 of 900 at position chrXV:47951"
+[1] "mapping associations of marker #379 of 900 at position chrXV:102500"
+[1] "mapping associations of marker #372 of 900 at position chrXV:78920"
+[1] "mapping associations of marker #363 of 900 at position chrXV:56070"
+[1] "mapping associations of marker #370 of 900 at position chrXV:74338"
+[1] "mapping associations of marker #360 of 900 at position chrXV:47793"
+[1] "mapping associations of marker #374 of 900 at position chrXV:82213"
+[1] "mapping associations of marker #383 of 900 at position chrXV:125599"
+[1] "mapping associations of marker #357 of 900 at position chrXV:45210"
+[1] "mapping associations of marker #380 of 900 at position chrXV:107219"
+[1] "mapping associations of marker #371 of 900 at position chrXV:75860"
+[1] "mapping associations of marker #378 of 900 at position chrXV:102305"
+[1] "mapping associations of marker #364 of 900 at position chrXV:56987"
+[1] "mapping associations of marker #354 of 900 at position chrXV:41788"
+[1] "mapping associations of marker #353 of 900 at position chrXV:41050"
+[1] "mapping associations of marker #365 of 900 at position chrXV:58160"
+[1] "mapping associations of marker #368 of 900 at position chrXV:69894"
+[1] "mapping associations of marker #376 of 900 at position chrXV:92185"
+[1] "mapping associations of marker #358 of 900 at position chrXV:46201"
+[1] "mapping associations of marker #367 of 900 at position chrXV:61694"
+[1] "mapping associations of marker #356 of 900 at position chrXV:43873"
+[1] "mapping associations of marker #359 of 900 at position chrXV:46903"
+[1] "mapping associations of marker #377 of 900 at position chrXV:94048"
+[1] "mapping associations of marker #381 of 900 at position chrXV:108394"
+[1] "mapping associations of marker #382 of 900 at position chrXV:108945"
+[1] "mapping associations of marker #366 of 900 at position chrXV:59467"
+[1] "mapping associations of marker #369 of 900 at position chrXV:71725"
+[1] "mapping associations of marker #375 of 900 at position chrXV:86295"
+[1] "mapping associations of marker #355 of 900 at position chrXV:41838"
+[1] "mapping associations of marker #362 of 900 at position chrXV:54505"
+[1] "mapping associations of marker #384 of 900 at position chrXV:135275"
+[1] "mapping associations of marker #373 of 900 at position chrXV:80664"
+[1] "mapping associations of marker #393 of 900 at position chrXV:159369"
+[1] "mapping associations of marker #395 of 900 at position chrXV:161464"
+[1] "mapping associations of marker #389 of 900 at position chrXV:142001"
+[1] "mapping associations of marker #411 of 900 at position chrXV:199783"
+[1] "mapping associations of marker #392 of 900 at position chrXV:158717"
+[1] "mapping associations of marker #404 of 900 at position chrXV:194198"
+[1] "mapping associations of marker #402 of 900 at position chrXV:189231"
+[1] "mapping associations of marker #415 of 900 at position chrXV:214734"
+[1] "mapping associations of marker #406 of 900 at position chrXV:195072"
+[1] "mapping associations of marker #403 of 900 at position chrXV:193911"
+[1] "mapping associations of marker #396 of 900 at position chrXV:163912"
+[1] "mapping associations of marker #412 of 900 at position chrXV:201792"
+[1] "mapping associations of marker #408 of 900 at position chrXV:196663"
+[1] "mapping associations of marker #410 of 900 at position chrXV:199186"
+[1] "mapping associations of marker #385 of 900 at position chrXV:135779"
+[1] "mapping associations of marker #400 of 900 at position chrXV:185473"
+[1] "mapping associations of marker #390 of 900 at position chrXV:151997"
+[1] "mapping associations of marker #399 of 900 at position chrXV:175135"
+[1] "mapping associations of marker #391 of 900 at position chrXV:158074"
+[1] "mapping associations of marker #397 of 900 at position chrXV:165725"
+[1] "mapping associations of marker #409 of 900 at position chrXV:197158"
+[1] "mapping associations of marker #388 of 900 at position chrXV:141731"
+[1] "mapping associations of marker #386 of 900 at position chrXV:139359"
+[1] "mapping associations of marker #414 of 900 at position chrXV:213488"
+[1] "mapping associations of marker #413 of 900 at position chrXV:205126"
+[1] "mapping associations of marker #401 of 900 at position chrXV:186481"
+[1] "mapping associations of marker #398 of 900 at position chrXV:166482"
+[1] "mapping associations of marker #387 of 900 at position chrXV:140012"
+[1] "mapping associations of marker #416 of 900 at position chrXV:217521"
+[1] "mapping associations of marker #394 of 900 at position chrXV:160139"
+[1] "mapping associations of marker #407 of 900 at position chrXV:195381"
+[1] "mapping associations of marker #405 of 900 at position chrXV:194759"
+[1] "mapping associations of marker #425 of 900 at position chrXV:244063"
+[1] "mapping associations of marker #427 of 900 at position chrXV:250527"
+[1] "mapping associations of marker #424 of 900 at position chrXV:243462"
+[1] "mapping associations of marker #436 of 900 at position chrXV:276471"
+[1] "mapping associations of marker #421 of 900 at position chrXV:231018"
+[1] "mapping associations of marker #443 of 900 at position chrXV:301153"
+[1] "mapping associations of marker #438 of 900 at position chrXV:282519"
+[1] "mapping associations of marker #447 of 900 at position chrXV:305341"
+[1] "mapping associations of marker #417 of 900 at position chrXV:218142"
+[1] "mapping associations of marker #435 of 900 at position chrXV:273227"
+[1] "mapping associations of marker #444 of 900 at position chrXV:301621"
+[1] "mapping associations of marker #418 of 900 at position chrXV:219832"
+[1] "mapping associations of marker #428 of 900 at position chrXV:251243"
+[1] "mapping associations of marker #434 of 900 at position chrXV:269477"
+[1] "mapping associations of marker #432 of 900 at position chrXV:256670"
+[1] "mapping associations of marker #440 of 900 at position chrXV:289957"
+[1] "mapping associations of marker #422 of 900 at position chrXV:233334"
+[1] "mapping associations of marker #442 of 900 at position chrXV:293590"
+[1] "mapping associations of marker #431 of 900 at position chrXV:254944"
+[1] "mapping associations of marker #423 of 900 at position chrXV:241207"
+[1] "mapping associations of marker #429 of 900 at position chrXV:252113"
+[1] "mapping associations of marker #420 of 900 at position chrXV:221859"
+[1] "mapping associations of marker #441 of 900 at position chrXV:292858"
+[1] "mapping associations of marker #433 of 900 at position chrXV:267165"
+[1] "mapping associations of marker #445 of 900 at position chrXV:303067"
+[1] "mapping associations of marker #446 of 900 at position chrXV:303991"
+[1] "mapping associations of marker #448 of 900 at position chrXV:307256"
+[1] "mapping associations of marker #419 of 900 at position chrXV:220880"
+[1] "mapping associations of marker #437 of 900 at position chrXV:279942"
+[1] "mapping associations of marker #426 of 900 at position chrXV:246679"
+[1] "mapping associations of marker #430 of 900 at position chrXV:254241"
+[1] "mapping associations of marker #439 of 900 at position chrXV:285417"
+[1] "mapping associations of marker #457 of 900 at position chrXV:343921"
+[1] "mapping associations of marker #453 of 900 at position chrXV:329425"
+[1] "mapping associations of marker #459 of 900 at position chrXV:371632"
+[1] "mapping associations of marker #456 of 900 at position chrXV:343484"
+[1] "mapping associations of marker #468 of 900 at position chrXV:413669"
+[1] "mapping associations of marker #479 of 900 at position chrXV:453762"
+[1] "mapping associations of marker #475 of 900 at position chrXV:447362"
+[1] "mapping associations of marker #467 of 900 at position chrXV:411673"
+[1] "mapping associations of marker #449 of 900 at position chrXV:312146"
+[1] "mapping associations of marker #470 of 900 at position chrXV:426558"
+[1] "mapping associations of marker #450 of 900 at position chrXV:317329"
+[1] "mapping associations of marker #476 of 900 at position chrXV:447858"
+[1] "mapping associations of marker #466 of 900 at position chrXV:411579"
+[1] "mapping associations of marker #460 of 900 at position chrXV:374373"
+[1] "mapping associations of marker #472 of 900 at position chrXV:442592"
+[1] "mapping associations of marker #464 of 900 at position chrXV:408874"
+[1] "mapping associations of marker #473 of 900 at position chrXV:445216"
+[1] "mapping associations of marker #455 of 900 at position chrXV:341179"
+[1] "mapping associations of marker #461 of 900 at position chrXV:376957"
+[1] "mapping associations of marker #454 of 900 at position chrXV:334807"
+[1] "mapping associations of marker #474 of 900 at position chrXV:446451"
+[1] "mapping associations of marker #463 of 900 at position chrXV:407036"
+[1] "mapping associations of marker #465 of 900 at position chrXV:409478"
+[1] "mapping associations of marker #452 of 900 at position chrXV:324875"
+[1] "mapping associations of marker #477 of 900 at position chrXV:448221"
+[1] "mapping associations of marker #469 of 900 at position chrXV:422905"
+[1] "mapping associations of marker #451 of 900 at position chrXV:318136"
+[1] "mapping associations of marker #480 of 900 at position chrXV:456978"
+[1] "mapping associations of marker #462 of 900 at position chrXV:382535"
+[1] "mapping associations of marker #458 of 900 at position chrXV:365792"
+[1] "mapping associations of marker #478 of 900 at position chrXV:450216"
+[1] "mapping associations of marker #489 of 900 at position chrXV:468284"
+[1] "mapping associations of marker #491 of 900 at position chrXV:477077"
+[1] "mapping associations of marker #471 of 900 at position chrXV:441463"
+[1] "mapping associations of marker #488 of 900 at position chrXV:463787"
+[1] "mapping associations of marker #485 of 900 at position chrXV:460848"
+[1] "mapping associations of marker #481 of 900 at position chrXV:457470"
+[1] "mapping associations of marker #511 of 900 at position chrXV:512256"
+[1] "mapping associations of marker #500 of 900 at position chrXV:487727"
+[1] "mapping associations of marker #482 of 900 at position chrXV:458781"
+[1] "mapping associations of marker #507 of 900 at position chrXV:497661"
+[1] "mapping associations of marker #502 of 900 at position chrXV:490882"
+[1] "mapping associations of marker #499 of 900 at position chrXV:485031"
+[1] "mapping associations of marker #492 of 900 at position chrXV:478679"
+[1] "mapping associations of marker #508 of 900 at position chrXV:503533"
+[1] "mapping associations of marker #498 of 900 at position chrXV:483960"
+[1] "mapping associations of marker #496 of 900 at position chrXV:482267"
+[1] "mapping associations of marker #487 of 900 at position chrXV:463343"
+[1] "mapping associations of marker #506 of 900 at position chrXV:496393"
+[1] "mapping associations of marker #495 of 900 at position chrXV:481588"
+[1] "mapping associations of marker #493 of 900 at position chrXV:479060"
+[1] "mapping associations of marker #505 of 900 at position chrXV:495861"
+[1] "mapping associations of marker #486 of 900 at position chrXV:461411"
+[1] "mapping associations of marker #497 of 900 at position chrXV:482608"
+[1] "mapping associations of marker #504 of 900 at position chrXV:495525"
+[1] "mapping associations of marker #501 of 900 at position chrXV:487809"
+[1] "mapping associations of marker #509 of 900 at position chrXV:506209"
+[1] "mapping associations of marker #484 of 900 at position chrXV:460430"
+[1] "mapping associations of marker #512 of 900 at position chrXV:513015"
+[1] "mapping associations of marker #490 of 900 at position chrXV:471315"
+[1] "mapping associations of marker #483 of 900 at position chrXV:459560"
+[1] "mapping associations of marker #494 of 900 at position chrXV:481165"
+[1] "mapping associations of marker #510 of 900 at position chrXV:507805"
+[1] "mapping associations of marker #520 of 900 at position chrXV:552775"
+[1] "mapping associations of marker #521 of 900 at position chrXV:553150"
+[1] "mapping associations of marker #503 of 900 at position chrXV:493377"
+[1] "mapping associations of marker #523 of 900 at position chrXV:559477"
+[1] "mapping associations of marker #539 of 900 at position chrXV:611163"
+[1] "mapping associations of marker #517 of 900 at position chrXV:551813"
+[1] "mapping associations of marker #543 of 900 at position chrXV:627315"
+[1] "mapping associations of marker #513 of 900 at position chrXV:518299"
+[1] "mapping associations of marker #514 of 900 at position chrXV:519432"
+[1] "mapping associations of marker #532 of 900 at position chrXV:583591"
+[1] "mapping associations of marker #534 of 900 at position chrXV:586701"
+[1] "mapping associations of marker #540 of 900 at position chrXV:615643"
+[1] "mapping associations of marker #528 of 900 at position chrXV:577639"
+[1] "mapping associations of marker #531 of 900 at position chrXV:582590"
+[1] "mapping associations of marker #519 of 900 at position chrXV:552421"
+[1] "mapping associations of marker #530 of 900 at position chrXV:582005"
+[1] "mapping associations of marker #538 of 900 at position chrXV:606849"
+[1] "mapping associations of marker #525 of 900 at position chrXV:570373"
+[1] "mapping associations of marker #527 of 900 at position chrXV:573228"
+[1] "mapping associations of marker #537 of 900 at position chrXV:605978"
+[1] "mapping associations of marker #524 of 900 at position chrXV:568141"
+[1] "mapping associations of marker #536 of 900 at position chrXV:588756"
+[1] "mapping associations of marker #529 of 900 at position chrXV:579389"
+[1] "mapping associations of marker #533 of 900 at position chrXV:585188"
+[1] "mapping associations of marker #518 of 900 at position chrXV:552069"
+[1] "mapping associations of marker #541 of 900 at position chrXV:617676"
+[1] "mapping associations of marker #544 of 900 at position chrXV:627894"
+[1] "mapping associations of marker #516 of 900 at position chrXV:548689"
+[1] "mapping associations of marker #515 of 900 at position chrXV:546198"
+[1] "mapping associations of marker #522 of 900 at position chrXV:553950"
+[1] "mapping associations of marker #542 of 900 at position chrXV:621951"
+[1] "mapping associations of marker #552 of 900 at position chrXV:638136"
+[1] "mapping associations of marker #535 of 900 at position chrXV:587565"
+[1] "mapping associations of marker #526 of 900 at position chrXV:571256"
+[1] "mapping associations of marker #553 of 900 at position chrXV:639445"
+[1] "mapping associations of marker #575 of 900 at position chrXV:736963"
+[1] "mapping associations of marker #571 of 900 at position chrXV:716400"
+[1] "mapping associations of marker #545 of 900 at position chrXV:630082"
+[1] "mapping associations of marker #555 of 900 at position chrXV:656264"
+[1] "mapping associations of marker #549 of 900 at position chrXV:634307"
+[1] "mapping associations of marker #546 of 900 at position chrXV:630899"
+[1] "mapping associations of marker #566 of 900 at position chrXV:692038"
+[1] "mapping associations of marker #551 of 900 at position chrXV:637584"
+[1] "mapping associations of marker #563 of 900 at position chrXV:678625"
+[1] "mapping associations of marker #570 of 900 at position chrXV:715815"
+[1] "mapping associations of marker #572 of 900 at position chrXV:720426"
+[1] "mapping associations of marker #569 of 900 at position chrXV:710606"
+[1] "mapping associations of marker #564 of 900 at position chrXV:681705"
+[1] "mapping associations of marker #557 of 900 at position chrXV:657980"
+[1] "mapping associations of marker #559 of 900 at position chrXV:669720"
+[1] "mapping associations of marker #562 of 900 at position chrXV:677286"
+[1] "mapping associations of marker #560 of 900 at position chrXV:671981"
+[1] "mapping associations of marker #556 of 900 at position chrXV:656567"
+[1] "mapping associations of marker #550 of 900 at position chrXV:636908"
+[1] "mapping associations of marker #568 of 900 at position chrXV:700514"
+[1] "mapping associations of marker #576 of 900 at position chrXV:741440"
+[1] "mapping associations of marker #561 of 900 at position chrXV:675070"
+[1] "mapping associations of marker #573 of 900 at position chrXV:723226"
+[1] "mapping associations of marker #554 of 900 at position chrXV:652034"
+[1] "mapping associations of marker #548 of 900 at position chrXV:633453"
+[1] "mapping associations of marker #565 of 900 at position chrXV:684078"
+[1] "mapping associations of marker #584 of 900 at position chrXV:766799"
+[1] "mapping associations of marker #574 of 900 at position chrXV:732609"
+[1] "mapping associations of marker #547 of 900 at position chrXV:631653"
+[1] "mapping associations of marker #567 of 900 at position chrXV:695150"
+[1] "mapping associations of marker #558 of 900 at position chrXV:663812"
+[1] "mapping associations of marker #577 of 900 at position chrXV:747552"
+[1] "mapping associations of marker #578 of 900 at position chrXV:748605"
+[1] "mapping associations of marker #585 of 900 at position chrXV:768716"
+[1] "mapping associations of marker #587 of 900 at position chrXV:785050"
+[1] "mapping associations of marker #607 of 900 at position chrXV:884596"
+[1] "mapping associations of marker #603 of 900 at position chrXV:845660"
+[1] "mapping associations of marker #581 of 900 at position chrXV:761032"
+[1] "mapping associations of marker #598 of 900 at position chrXV:824858"
+[1] "mapping associations of marker #583 of 900 at position chrXV:764523"
+[1] "mapping associations of marker #595 of 900 at position chrXV:811848"
+[1] "mapping associations of marker #604 of 900 at position chrXV:850811"
+[1] "mapping associations of marker #601 of 900 at position chrXV:839583"
+[1] "mapping associations of marker #589 of 900 at position chrXV:796728"
+[1] "mapping associations of marker #592 of 900 at position chrXV:804146"
+[1] "mapping associations of marker #596 of 900 at position chrXV:822927"
+[1] "mapping associations of marker #582 of 900 at position chrXV:762665"
+[1] "mapping associations of marker #602 of 900 at position chrXV:845199"
+[1] "mapping associations of marker #588 of 900 at position chrXV:794866"
+[1] "mapping associations of marker #594 of 900 at position chrXV:810364"
+[1] "mapping associations of marker #600 of 900 at position chrXV:830314"
+[1] "mapping associations of marker #591 of 900 at position chrXV:801745"
+[1] "mapping associations of marker #593 of 900 at position chrXV:806960"
+[1] "mapping associations of marker #608 of 900 at position chrXV:885911"
+[1] "mapping associations of marker #605 of 900 at position chrXV:859245"
+[1] "mapping associations of marker #597 of 900 at position chrXV:823938"
+[1] "mapping associations of marker #586 of 900 at position chrXV:777196"
+[1] "mapping associations of marker #579 of 900 at position chrXV:751144"
+[1] "mapping associations of marker #580 of 900 at position chrXV:758119"
+[1] "mapping associations of marker #616 of 900 at position chrXV:920814"
+[1] "mapping associations of marker #606 of 900 at position chrXV:878878"
+[1] "mapping associations of marker #590 of 900 at position chrXV:798206"
+[1] "mapping associations of marker #599 of 900 at position chrXV:828050"
+[1] "mapping associations of marker #609 of 900 at position chrXV:891758"
+[1] "mapping associations of marker #619 of 900 at position chrXV:926925"
+[1] "mapping associations of marker #635 of 900 at position chrXV:999455"
+[1] "mapping associations of marker #610 of 900 at position chrXV:894519"
+[1] "mapping associations of marker #615 of 900 at position chrXV:917889"
+[1] "mapping associations of marker #617 of 900 at position chrXV:925103"
+[1] "mapping associations of marker #630 of 900 at position chrXV:987547"
+[1] "mapping associations of marker #636 of 900 at position chrXV:1000192"
+[1] "mapping associations of marker #613 of 900 at position chrXV:911587"
+[1] "mapping associations of marker #627 of 900 at position chrXV:961510"
+[1] "mapping associations of marker #639 of 900 at position chrXV:1007685"
+[1] "mapping associations of marker #624 of 900 at position chrXV:950909"
+[1] "mapping associations of marker #634 of 900 at position chrXV:997902"
+[1] "mapping associations of marker #628 of 900 at position chrXV:968440"
+[1] "mapping associations of marker #633 of 900 at position chrXV:997483"
+[1] "mapping associations of marker #626 of 900 at position chrXV:959820"
+[1] "mapping associations of marker #621 of 900 at position chrXV:935504"
+[1] "mapping associations of marker #620 of 900 at position chrXV:930562"
+[1] "mapping associations of marker #614 of 900 at position chrXV:916094"
+[1] "mapping associations of marker #623 of 900 at position chrXV:946466"
+[1] "mapping associations of marker #632 of 900 at position chrXV:991809"
+[1] "mapping associations of marker #640 of 900 at position chrXV:1008507"
+[1] "mapping associations of marker #618 of 900 at position chrXV:926126"
+[1] "mapping associations of marker #629 of 900 at position chrXV:981291"
+[1] "mapping associations of marker #625 of 900 at position chrXV:959231"
+[1] "mapping associations of marker #611 of 900 at position chrXV:905895"
+[1] "mapping associations of marker #612 of 900 at position chrXV:906404"
+[1] "mapping associations of marker #637 of 900 at position chrXV:1002323"
+[1] "mapping associations of marker #622 of 900 at position chrXV:945621"
+[1] "mapping associations of marker #638 of 900 at position chrXV:1004868"
+[1] "mapping associations of marker #648 of 900 at position chrXV:1049615"
+[1] "mapping associations of marker #631 of 900 at position chrXV:988575"
+[1] "mapping associations of marker #641 of 900 at position chrXV:1011045"
+[1] "mapping associations of marker #651 of 900 at position chrXV:1063895"
+[1] "mapping associations of marker #667 of 900 at position chrXVI:51430"
+[1] "mapping associations of marker #649 of 900 at position chrXV:1054633"
+[1] "mapping associations of marker #647 of 900 at position chrXV:1044933"
+[1] "mapping associations of marker #645 of 900 at position chrXV:1026427"
+[1] "mapping associations of marker #659 of 900 at position chrXVI:27710"
+[1] "mapping associations of marker #642 of 900 at position chrXV:1019976"
+[1] "mapping associations of marker #662 of 900 at position chrXVI:35528"
+[1] "mapping associations of marker #660 of 900 at position chrXVI:30586"
+[1] "mapping associations of marker #671 of 900 at position chrXVI:68882"
+[1] "mapping associations of marker #655 of 900 at position chrXV:1075718"
+[1] "mapping associations of marker #668 of 900 at position chrXVI:53867"
+[1] "mapping associations of marker #656 of 900 at position chrXVI:15039"
+[1] "mapping associations of marker #665 of 900 at position chrXVI:45292"
+[1] "mapping associations of marker #653 of 900 at position chrXV:1067520"
+[1] "mapping associations of marker #658 of 900 at position chrXVI:25632"
+[1] "mapping associations of marker #652 of 900 at position chrXV:1065729"
+[1] "mapping associations of marker #680 of 900 at position chrXVI:83512"
+[1] "mapping associations of marker #666 of 900 at position chrXVI:47416"
+[1] "mapping associations of marker #672 of 900 at position chrXVI:69311"
+[1] "mapping associations of marker #664 of 900 at position chrXVI:43388"
+[1] "mapping associations of marker #646 of 900 at position chrXV:1027094"
+[1] "mapping associations of marker #650 of 900 at position chrXV:1060135"
+[1] "mapping associations of marker #657 of 900 at position chrXVI:16749"
+[1] "mapping associations of marker #661 of 900 at position chrXVI:30803"
+[1] "mapping associations of marker #654 of 900 at position chrXV:1074569"
+[1] "mapping associations of marker #644 of 900 at position chrXV:1024047"
+[1] "mapping associations of marker #669 of 900 at position chrXVI:55419"
+[1] "mapping associations of marker #643 of 900 at position chrXV:1022262"
+[1] "mapping associations of marker #670 of 900 at position chrXVI:65188"
+[1] "mapping associations of marker #683 of 900 at position chrXVI:86230"
+[1] "mapping associations of marker #673 of 900 at position chrXVI:72276"
+[1] "mapping associations of marker #663 of 900 at position chrXVI:41286"
+[1] "mapping associations of marker #679 of 900 at position chrXVI:81157"
+[1] "mapping associations of marker #674 of 900 at position chrXVI:73826"
+[1] "mapping associations of marker #681 of 900 at position chrXVI:84945"
+[1] "mapping associations of marker #712 of 900 at position chrXVI:230687"
+[1] "mapping associations of marker #694 of 900 at position chrXVI:141321"
+[1] "mapping associations of marker #699 of 900 at position chrXVI:171982"
+[1] "mapping associations of marker #692 of 900 at position chrXVI:133186"
+[1] "mapping associations of marker #703 of 900 at position chrXVI:182927"
+[1] "mapping associations of marker #691 of 900 at position chrXVI:132909"
+[1] "mapping associations of marker #687 of 900 at position chrXVI:102652"
+[1] "mapping associations of marker #677 of 900 at position chrXVI:77440"
+[1] "mapping associations of marker #688 of 900 at position chrXVI:104905"
+[1] "mapping associations of marker #690 of 900 at position chrXVI:120844"
+[1] "mapping associations of marker #685 of 900 at position chrXVI:91018"
+[1] "mapping associations of marker #697 of 900 at position chrXVI:155634"
+[1] "mapping associations of marker #698 of 900 at position chrXVI:165213"
+[1] "mapping associations of marker #684 of 900 at position chrXVI:89283"
+[1] "mapping associations of marker #696 of 900 at position chrXVI:152472"
+[1] "mapping associations of marker #682 of 900 at position chrXVI:85843"
+[1] "mapping associations of marker #700 of 900 at position chrXVI:173979"
+[1] "mapping associations of marker #704 of 900 at position chrXVI:194152"
+[1] "mapping associations of marker #678 of 900 at position chrXVI:78691"
+[1] "mapping associations of marker #686 of 900 at position chrXVI:95804"
+[1] "mapping associations of marker #676 of 900 at position chrXVI:76123"
+[1] "mapping associations of marker #689 of 900 at position chrXVI:118322"
+[1] "mapping associations of marker #693 of 900 at position chrXVI:138673"
+[1] "mapping associations of marker #701 of 900 at position chrXVI:174782"
+[1] "mapping associations of marker #724 of 900 at position chrXVI:261137"
+[1] "mapping associations of marker #695 of 900 at position chrXVI:150017"
+[1] "mapping associations of marker #705 of 900 at position chrXVI:194832"
+[1] "mapping associations of marker #702 of 900 at position chrXVI:176477"
+[1] "mapping associations of marker #675 of 900 at position chrXVI:74327"
+[1] "mapping associations of marker #715 of 900 at position chrXVI:240946"
+[1] "mapping associations of marker #744 of 900 at position chrXVI:364396"
+[1] "mapping associations of marker #713 of 900 at position chrXVI:239629"
+[1] "mapping associations of marker #706 of 900 at position chrXVI:199138"
+[1] "mapping associations of marker #709 of 900 at position chrXVI:218021"
+[1] "mapping associations of marker #735 of 900 at position chrXVI:318049"
+[1] "mapping associations of marker #711 of 900 at position chrXVI:228950"
+[1] "mapping associations of marker #731 of 900 at position chrXVI:300745"
+[1] "mapping associations of marker #719 of 900 at position chrXVI:253090"
+[1] "mapping associations of marker #720 of 900 at position chrXVI:253892"
+[1] "mapping associations of marker #726 of 900 at position chrXVI:276463"
+[1] "mapping associations of marker #723 of 900 at position chrXVI:256672"
+[1] "mapping associations of marker #717 of 900 at position chrXVI:245982"
+[1] "mapping associations of marker #730 of 900 at position chrXVI:300317"
+[1] "mapping associations of marker #714 of 900 at position chrXVI:240681"
+[1] "mapping associations of marker #716 of 900 at position chrXVI:241363"
+[1] "mapping associations of marker #729 of 900 at position chrXVI:295408"
+[1] "mapping associations of marker #732 of 900 at position chrXVI:304984"
+[1] "mapping associations of marker #756 of 900 at position chrXVI:387248"
+[1] "mapping associations of marker #728 of 900 at position chrXVI:288425"
+[1] "mapping associations of marker #718 of 900 at position chrXVI:252117"
+[1] "mapping associations of marker #722 of 900 at position chrXVI:256359"
+[1] "mapping associations of marker #725 of 900 at position chrXVI:266518"
+[1] "mapping associations of marker #710 of 900 at position chrXVI:220471"
+[1] "mapping associations of marker #721 of 900 at position chrXVI:255750"
+[1] "mapping associations of marker #736 of 900 at position chrXVI:325850"
+[1] "mapping associations of marker #727 of 900 at position chrXVI:278867"
+[1] "mapping associations of marker #708 of 900 at position chrXVI:207364"
+[1] "mapping associations of marker #737 of 900 at position chrXVI:330238"
+[1] "mapping associations of marker #734 of 900 at position chrXVI:310970"
+[1] "mapping associations of marker #733 of 900 at position chrXVI:309023"
+[1] "mapping associations of marker #747 of 900 at position chrXVI:371406"
+[1] "mapping associations of marker #707 of 900 at position chrXVI:205023"
+[1] "mapping associations of marker #738 of 900 at position chrXVI:338332"
+[1] "mapping associations of marker #776 of 900 at position chrXVI:453873"
+[1] "mapping associations of marker #743 of 900 at position chrXVI:360700"
+[1] "mapping associations of marker #745 of 900 at position chrXVI:366437"
+[1] "mapping associations of marker #758 of 900 at position chrXVI:408647"
+[1] "mapping associations of marker #755 of 900 at position chrXVI:386168"
+[1] "mapping associations of marker #767 of 900 at position chrXVI:429187"
+[1] "mapping associations of marker #763 of 900 at position chrXVI:425481"
+[1] "mapping associations of marker #741 of 900 at position chrXVI:349570"
+[1] "mapping associations of marker #751 of 900 at position chrXVI:375533"
+[1] "mapping associations of marker #752 of 900 at position chrXVI:379192"
+[1] "mapping associations of marker #749 of 900 at position chrXVI:374664"
+[1] "mapping associations of marker #748 of 900 at position chrXVI:373029"
+[1] "mapping associations of marker #764 of 900 at position chrXVI:426328"
+[1] "mapping associations of marker #761 of 900 at position chrXVI:422730"
+[1] "mapping associations of marker #746 of 900 at position chrXVI:368069"
+[1] "mapping associations of marker #788 of 900 at position chrXVI:483961"
+[1] "mapping associations of marker #762 of 900 at position chrXVI:423193"
+[1] "mapping associations of marker #760 of 900 at position chrXVI:413894"
+[1] "mapping associations of marker #750 of 900 at position chrXVI:375193"
+[1] "mapping associations of marker #754 of 900 at position chrXVI:382024"
+[1] "mapping associations of marker #768 of 900 at position chrXVI:429289"
+[1] "mapping associations of marker #742 of 900 at position chrXVI:356245"
+[1] "mapping associations of marker #757 of 900 at position chrXVI:406979"
+[1] "mapping associations of marker #753 of 900 at position chrXVI:381702"
+[1] "mapping associations of marker #765 of 900 at position chrXVI:426991"
+[1] "mapping associations of marker #740 of 900 at position chrXVI:348646"
+[1] "mapping associations of marker #759 of 900 at position chrXVI:409773"
+[1] "mapping associations of marker #770 of 900 at position chrXVI:432771"
+[1] "mapping associations of marker #766 of 900 at position chrXVI:428691"
+[1] "mapping associations of marker #769 of 900 at position chrXVI:430826"
+[1] "mapping associations of marker #779 of 900 at position chrXVI:463543"
+[1] "mapping associations of marker #808 of 900 at position chrXVI:529663"
+[1] "mapping associations of marker #739 of 900 at position chrXVI:342883"
+[1] "mapping associations of marker #775 of 900 at position chrXVI:452986"
+[1] "mapping associations of marker #790 of 900 at position chrXVI:491370"
+[1] "mapping associations of marker #787 of 900 at position chrXVI:483355"
+[1] "mapping associations of marker #777 of 900 at position chrXVI:459330"
+[1] "mapping associations of marker #784 of 900 at position chrXVI:478558"
+[1] "mapping associations of marker #783 of 900 at position chrXVI:476694"
+[1] "mapping associations of marker #781 of 900 at position chrXVI:466824"
+[1] "mapping associations of marker #795 of 900 at position chrXVI:501255"
+[1] "mapping associations of marker #773 of 900 at position chrXVI:446280"
+[1] "mapping associations of marker #796 of 900 at position chrXVI:501575"
+[1] "mapping associations of marker #780 of 900 at position chrXVI:466112"
+[1] "mapping associations of marker #799 of 900 at position chrXVI:505150"
+[1] "mapping associations of marker #778 of 900 at position chrXVI:462045"
+[1] "mapping associations of marker #793 of 900 at position chrXVI:497425"
+[1] "mapping associations of marker #786 of 900 at position chrXVI:481955"
+[1] "mapping associations of marker #794 of 900 at position chrXVI:500683"
+[1] "mapping associations of marker #782 of 900 at position chrXVI:475484"
+[1] "mapping associations of marker #792 of 900 at position chrXVI:496069"
+[1] "mapping associations of marker #820 of 900 at position chrXVI:610743"
+[1] "mapping associations of marker #774 of 900 at position chrXVI:446756"
+[1] "mapping associations of marker #800 of 900 at position chrXVI:514583"
+[1] "mapping associations of marker #785 of 900 at position chrXVI:480754"
+[1] "mapping associations of marker #789 of 900 at position chrXVI:486011"
+[1] "mapping associations of marker #802 of 900 at position chrXVI:516710"
+[1] "mapping associations of marker #797 of 900 at position chrXVI:503488"
+[1] "mapping associations of marker #772 of 900 at position chrXVI:444574"
+[1] "mapping associations of marker #791 of 900 at position chrXVI:493871"
+[1] "mapping associations of marker #798 of 900 at position chrXVI:504262"
+[1] "mapping associations of marker #801 of 900 at position chrXVI:516356"
+[1] "mapping associations of marker #811 of 900 at position chrXVI:540311"
+[1] "mapping associations of marker #840 of 900 at position chrXVI:695787"
+[1] "mapping associations of marker #771 of 900 at position chrXVI:433340"
+[1] "mapping associations of marker #809 of 900 at position chrXVI:530286"
+[1] "mapping associations of marker #807 of 900 at position chrXVI:528593"
+[1] "mapping associations of marker #815 of 900 at position chrXVI:574886"
+[1] "mapping associations of marker #822 of 900 at position chrXVI:616806"
+[1] "mapping associations of marker #805 of 900 at position chrXVI:520764"
+[1] "mapping associations of marker #819 of 900 at position chrXVI:609546"
+[1] "mapping associations of marker #812 of 900 at position chrXVI:546787"
+[1] "mapping associations of marker #813 of 900 at position chrXVI:561420"
+[1] "mapping associations of marker #828 of 900 at position chrXVI:640589"
+[1] "mapping associations of marker #827 of 900 at position chrXVI:629712"
+[1] "mapping associations of marker #816 of 900 at position chrXVI:584269"
+[1] "mapping associations of marker #831 of 900 at position chrXVI:654906"
+[1] "mapping associations of marker #818 of 900 at position chrXVI:599378"
+[1] "mapping associations of marker #814 of 900 at position chrXVI:566170"
+[1] "mapping associations of marker #824 of 900 at position chrXVI:623271"
+[1] "mapping associations of marker #810 of 900 at position chrXVI:538751"
+[1] "mapping associations of marker #825 of 900 at position chrXVI:624238"
+[1] "mapping associations of marker #852 of 900 at position chrXVI:730292"
+[1] "mapping associations of marker #806 of 900 at position chrXVI:526392"
+[1] "mapping associations of marker #826 of 900 at position chrXVI:625483"
+[1] "mapping associations of marker #829 of 900 at position chrXVI:647721"
+[1] "mapping associations of marker #834 of 900 at position chrXVI:665441"
+[1] "mapping associations of marker #817 of 900 at position chrXVI:592674"
+[1] "mapping associations of marker #832 of 900 at position chrXVI:659394"
+[1] "mapping associations of marker #821 of 900 at position chrXVI:613348"
+[1] "mapping associations of marker #830 of 900 at position chrXVI:652919"
+[1] "mapping associations of marker #804 of 900 at position chrXVI:519322"
+[1] "mapping associations of marker #843 of 900 at position chrXVI:707559"
+[1] "mapping associations of marker #833 of 900 at position chrXVI:662450"
+[1] "mapping associations of marker #803 of 900 at position chrXVI:518590"
+[1] "mapping associations of marker #823 of 900 at position chrXVI:618453"
+[1] "mapping associations of marker #872 of 900 at position chrXVI:830982"
+[1] "mapping associations of marker #841 of 900 at position chrXVI:700042"
+[1] "mapping associations of marker #839 of 900 at position chrXVI:694515"
+[1] "mapping associations of marker #847 of 900 at position chrXVI:717249"
+[1] "mapping associations of marker #851 of 900 at position chrXVI:724121"
+[1] "mapping associations of marker #837 of 900 at position chrXVI:687687"
+[1] "mapping associations of marker #859 of 900 at position chrXVI:779081"
+[1] "mapping associations of marker #844 of 900 at position chrXVI:709839"
+[1] "mapping associations of marker #854 of 900 at position chrXVI:739339"
+[1] "mapping associations of marker #860 of 900 at position chrXVI:785197"
+[1] "mapping associations of marker #845 of 900 at position chrXVI:714288"
+[1] "mapping associations of marker #863 of 900 at position chrXVI:787292"
+[1] "mapping associations of marker #856 of 900 at position chrXVI:751308"
+[1] "mapping associations of marker #848 of 900 at position chrXVI:718261"
+[1] "mapping associations of marker #842 of 900 at position chrXVI:703512"
+[1] "mapping associations of marker #884 of 900 at position chrXVI:888534"
+[1] "mapping associations of marker #838 of 900 at position chrXVI:689270"
+[1] "mapping associations of marker #846 of 900 at position chrXVI:716403"
+[1] "mapping associations of marker #857 of 900 at position chrXVI:754869"
+[1] "mapping associations of marker #850 of 900 at position chrXVI:720416"
+[1] "mapping associations of marker #862 of 900 at position chrXVI:786138"
+[1] "mapping associations of marker #835 of 900 at position chrXVI:672180"
+[1] "mapping associations of marker #836 of 900 at position chrXVI:683893"
+[1] "mapping associations of marker #861 of 900 at position chrXVI:785737"
+[1] "mapping associations of marker #858 of 900 at position chrXVI:762886"
+[1] "mapping associations of marker #849 of 900 at position chrXVI:718898"
+[1] "mapping associations of marker #866 of 900 at position chrXVI:790660"
+[1] "mapping associations of marker #853 of 900 at position chrXVI:738117"
+[1] "mapping associations of marker #864 of 900 at position chrXVI:787485"
+[1] "mapping associations of marker #875 of 900 at position chrXVI:839169"
+[1] "mapping associations of marker #873 of 900 at position chrXVI:832988"
+[1] "mapping associations of marker #855 of 900 at position chrXVI:748400"
+[1] "mapping associations of marker #865 of 900 at position chrXVI:787976"
+[1] "mapping associations of marker #879 of 900 at position chrXVI:872338"
+[1] "mapping associations of marker #891 of 900 at position chrXVI:920519"
+[1] "mapping associations of marker #883 of 900 at position chrXVI:887244"
+[1] "mapping associations of marker #869 of 900 at position chrXVI:816544"
+[1] "mapping associations of marker #871 of 900 at position chrXVI:825433"
+[1] "mapping associations of marker #892 of 900 at position chrXVI:921937"
+[1] "mapping associations of marker #895 of 900 at position chrXVI:927907"
+[1] "mapping associations of marker #870 of 900 at position chrXVI:823324"
+[1] "mapping associations of marker #877 of 900 at position chrXVI:863056"
+[1] "mapping associations of marker #886 of 900 at position chrXVI:895022"
+[1] "mapping associations of marker #874 of 900 at position chrXVI:834908"
+[1] "mapping associations of marker #888 of 900 at position chrXVI:907771"
+[1] "mapping associations of marker #876 of 900 at position chrXVI:850437"
+[1] "mapping associations of marker #889 of 900 at position chrXVI:915200"
+[1] "mapping associations of marker #878 of 900 at position chrXVI:869725"
+[1] "mapping associations of marker #893 of 900 at position chrXVI:925072"
+[1] "mapping associations of marker #880 of 900 at position chrXVI:876811"
+[1] "mapping associations of marker #882 of 900 at position chrXVI:885979"
+[1] "mapping associations of marker #890 of 900 at position chrXVI:919665"
+[1] "mapping associations of marker #881 of 900 at position chrXVI:879007"
+[1] "mapping associations of marker #885 of 900 at position chrXVI:890535"
+[1] "mapping associations of marker #867 of 900 at position chrXVI:793555"
+[1] "mapping associations of marker #868 of 900 at position chrXVI:812990"
+[1] "mapping associations of marker #894 of 900 at position chrXVI:925939"
+[1] "mapping associations of marker #896 of 900 at position chrXVI:929522"
+[1] "mapping associations of marker #898 of 900 at position chrXVI:935251"
+[1] "mapping associations of marker #897 of 900 at position chrXVI:931948"
+[1] "mapping associations of marker #887 of 900 at position chrXVI:902929"
+[1] "mapping associations of marker #900 of 900 at position chrXVI:939489"
+[1] "mapping associations of marker #899 of 900 at position chrXVI:939333"
+[[1]]
+NULL
+
+[[2]]
+NULL
+
+[[3]]
+NULL
+
+[[4]]
+NULL
+
+[[5]]
+NULL
+
+[[6]]
+NULL
+
+[[7]]
+NULL
+
+[[8]]
+NULL
+
+[[9]]
+NULL
+
+[[10]]
+NULL
+
+[[11]]
+NULL
+
+[[12]]
+NULL
+
+[[13]]
+NULL
+
+[[14]]
+NULL
+
+[[15]]
+NULL
+
+[[16]]
+NULL
+
+[[17]]
+NULL
+
+[[18]]
+NULL
+
+[[19]]
+NULL
+
+[[20]]
+NULL
+
+[[21]]
+NULL
+
+[[22]]
+NULL
+
+[[23]]
+NULL
+
+[[24]]
+NULL
+
+[[25]]
+NULL
+
+[[26]]
+NULL
+
+[[27]]
+NULL
+
+[[28]]
+NULL
+
+[[29]]
+NULL
+
+[[30]]
+NULL
+
+[[31]]
+NULL
+
+[[32]]
+NULL
+
+[[33]]
+NULL
+
+[[34]]
+NULL
+
+[[35]]
+NULL
+
+[[36]]
+NULL
+
+[[37]]
+NULL
+
+[[38]]
+NULL
+
+[[39]]
+NULL
+
+[[40]]
+NULL
+
+[[41]]
+NULL
+
+[[42]]
+NULL
+
+[[43]]
+NULL
+
+[[44]]
+NULL
+
+[[45]]
+NULL
+
+[[46]]
+NULL
+
+[[47]]
+NULL
+
+[[48]]
+NULL
+
+[[49]]
+NULL
+
+[[50]]
+NULL
+
+[[51]]
+NULL
+
+[[52]]
+NULL
+
+[[53]]
+NULL
+
+[[54]]
+NULL
+
+[[55]]
+NULL
+
+[[56]]
+NULL
+
+[[57]]
+NULL
+
+[[58]]
+NULL
+
+[[59]]
+NULL
+
+[[60]]
+NULL
+
+[[61]]
+NULL
+
+[[62]]
+NULL
+
+[[63]]
+NULL
+
+[[64]]
+NULL
+
+[[65]]
+NULL
+
+[[66]]
+NULL
+
+[[67]]
+NULL
+
+[[68]]
+NULL
+
+[[69]]
+NULL
+
+[[70]]
+NULL
+
+[[71]]
+NULL
+
+[[72]]
+NULL
+
+[[73]]
+NULL
+
+[[74]]
+NULL
+
+[[75]]
+NULL
+
+[[76]]
+NULL
+
+[[77]]
+NULL
+
+[[78]]
+NULL
+
+[[79]]
+NULL
+
+[[80]]
+NULL
+
+[[81]]
+NULL
+
+[[82]]
+NULL
+
+[[83]]
+NULL
+
+[[84]]
+NULL
+
+[[85]]
+NULL
+
+[[86]]
+NULL
+
+[[87]]
+NULL
+
+[[88]]
+NULL
+
+[[89]]
+NULL
+
+[[90]]
+NULL
+
+[[91]]
+NULL
+
+[[92]]
+NULL
+
+[[93]]
+NULL
+
+[[94]]
+NULL
+
+[[95]]
+NULL
+
+[[96]]
+NULL
+
+[[97]]
+NULL
+
+[[98]]
+NULL
+
+[[99]]
+NULL
+
+[[100]]
+NULL
+
+[[101]]
+NULL
+
+[[102]]
+NULL
+
+[[103]]
+NULL
+
+[[104]]
+NULL
+
+[[105]]
+NULL
+
+[[106]]
+NULL
+
+[[107]]
+NULL
+
+[[108]]
+NULL
+
+[[109]]
+NULL
+
+[[110]]
+NULL
+
+[[111]]
+NULL
+
+[[112]]
+NULL
+
+[[113]]
+NULL
+
+[[114]]
+NULL
+
+[[115]]
+NULL
+
+[[116]]
+NULL
+
+[[117]]
+NULL
+
+[[118]]
+NULL
+
+[[119]]
+NULL
+
+[[120]]
+NULL
+
+[[121]]
+NULL
+
+[[122]]
+NULL
+
+[[123]]
+NULL
+
+[[124]]
+NULL
+
+[[125]]
+NULL
+
+[[126]]
+NULL
+
+[[127]]
+NULL
+
+[[128]]
+NULL
+
+[[129]]
+NULL
+
+[[130]]
+NULL
+
+[[131]]
+NULL
+
+[[132]]
+NULL
+
+[[133]]
+NULL
+
+[[134]]
+NULL
+
+[[135]]
+NULL
+
+[[136]]
+NULL
+
+[[137]]
+NULL
+
+[[138]]
+NULL
+
+[[139]]
+NULL
+
+[[140]]
+NULL
+
+[[141]]
+NULL
+
+[[142]]
+NULL
+
+[[143]]
+NULL
+
+[[144]]
+NULL
+
+[[145]]
+NULL
+
+[[146]]
+NULL
+
+[[147]]
+NULL
+
+[[148]]
+NULL
+
+[[149]]
+NULL
+
+[[150]]
+NULL
+
+[[151]]
+NULL
+
+[[152]]
+NULL
+
+[[153]]
+NULL
+
+[[154]]
+NULL
+
+[[155]]
+NULL
+
+[[156]]
+NULL
+
+[[157]]
+NULL
+
+[[158]]
+NULL
+
+[[159]]
+NULL
+
+[[160]]
+NULL
+
+[[161]]
+NULL
+
+[[162]]
+NULL
+
+[[163]]
+NULL
+
+[[164]]
+NULL
+
+[[165]]
+NULL
+
+[[166]]
+NULL
+
+[[167]]
+NULL
+
+[[168]]
+NULL
+
+[[169]]
+NULL
+
+[[170]]
+NULL
+
+[[171]]
+NULL
+
+[[172]]
+NULL
+
+[[173]]
+NULL
+
+[[174]]
+NULL
+
+[[175]]
+NULL
+
+[[176]]
+NULL
+
+[[177]]
+NULL
+
+[[178]]
+NULL
+
+[[179]]
+NULL
+
+[[180]]
+NULL
+
+[[181]]
+NULL
+
+[[182]]
+NULL
+
+[[183]]
+NULL
+
+[[184]]
+NULL
+
+[[185]]
+NULL
+
+[[186]]
+NULL
+
+[[187]]
+NULL
+
+[[188]]
+NULL
+
+[[189]]
+NULL
+
+[[190]]
+NULL
+
+[[191]]
+NULL
+
+[[192]]
+NULL
+
+[[193]]
+NULL
+
+[[194]]
+NULL
+
+[[195]]
+NULL
+
+[[196]]
+NULL
+
+[[197]]
+NULL
+
+[[198]]
+NULL
+
+[[199]]
+NULL
+
+[[200]]
+NULL
+
+[[201]]
+NULL
+
+[[202]]
+NULL
+
+[[203]]
+NULL
+
+[[204]]
+NULL
+
+[[205]]
+NULL
+
+[[206]]
+NULL
+
+[[207]]
+NULL
+
+[[208]]
+NULL
+
+[[209]]
+NULL
+
+[[210]]
+NULL
+
+[[211]]
+NULL
+
+[[212]]
+NULL
+
+[[213]]
+NULL
+
+[[214]]
+NULL
+
+[[215]]
+NULL
+
+[[216]]
+NULL
+
+[[217]]
+NULL
+
+[[218]]
+NULL
+
+[[219]]
+NULL
+
+[[220]]
+NULL
+
+[[221]]
+NULL
+
+[[222]]
+NULL
+
+[[223]]
+NULL
+
+[[224]]
+NULL
+
+[[225]]
+NULL
+
+[[226]]
+NULL
+
+[[227]]
+NULL
+
+[[228]]
+NULL
+
+[[229]]
+NULL
+
+[[230]]
+NULL
+
+[[231]]
+NULL
+
+[[232]]
+NULL
+
+[[233]]
+NULL
+
+[[234]]
+NULL
+
+[[235]]
+NULL
+
+[[236]]
+NULL
+
+[[237]]
+NULL
+
+[[238]]
+NULL
+
+[[239]]
+NULL
+
+[[240]]
+NULL
+
+[[241]]
+NULL
+
+[[242]]
+NULL
+
+[[243]]
+NULL
+
+[[244]]
+NULL
+
+[[245]]
+NULL
+
+[[246]]
+NULL
+
+[[247]]
+NULL
+
+[[248]]
+NULL
+
+[[249]]
+NULL
+
+[[250]]
+NULL
+
+[[251]]
+NULL
+
+[[252]]
+NULL
+
+[[253]]
+NULL
+
+[[254]]
+NULL
+
+[[255]]
+NULL
+
+[[256]]
+NULL
+
+[[257]]
+NULL
+
+[[258]]
+NULL
+
+[[259]]
+NULL
+
+[[260]]
+NULL
+
+[[261]]
+NULL
+
+[[262]]
+NULL
+
+[[263]]
+NULL
+
+[[264]]
+NULL
+
+[[265]]
+NULL
+
+[[266]]
+NULL
+
+[[267]]
+NULL
+
+[[268]]
+NULL
+
+[[269]]
+NULL
+
+[[270]]
+NULL
+
+[[271]]
+NULL
+
+[[272]]
+NULL
+
+[[273]]
+NULL
+
+[[274]]
+NULL
+
+[[275]]
+NULL
+
+[[276]]
+NULL
+
+[[277]]
+NULL
+
+[[278]]
+NULL
+
+[[279]]
+NULL
+
+[[280]]
+NULL
+
+[[281]]
+NULL
+
+[[282]]
+NULL
+
+[[283]]
+NULL
+
+[[284]]
+NULL
+
+[[285]]
+NULL
+
+[[286]]
+NULL
+
+[[287]]
+NULL
+
+[[288]]
+NULL
+
+[[289]]
+NULL
+
+[[290]]
+NULL
+
+[[291]]
+NULL
+
+[[292]]
+NULL
+
+[[293]]
+NULL
+
+[[294]]
+NULL
+
+[[295]]
+NULL
+
+[[296]]
+NULL
+
+[[297]]
+NULL
+
+[[298]]
+NULL
+
+[[299]]
+NULL
+
+[[300]]
+NULL
+
+[[301]]
+NULL
+
+[[302]]
+NULL
+
+[[303]]
+NULL
+
+[[304]]
+NULL
+
+[[305]]
+NULL
+
+[[306]]
+NULL
+
+[[307]]
+NULL
+
+[[308]]
+NULL
+
+[[309]]
+NULL
+
+[[310]]
+NULL
+
+[[311]]
+NULL
+
+[[312]]
+NULL
+
+[[313]]
+NULL
+
+[[314]]
+NULL
+
+[[315]]
+NULL
+
+[[316]]
+NULL
+
+[[317]]
+NULL
+
+[[318]]
+NULL
+
+[[319]]
+NULL
+
+[[320]]
+NULL
+
+[[321]]
+NULL
+
+[[322]]
+NULL
+
+[[323]]
+NULL
+
+[[324]]
+NULL
+
+[[325]]
+NULL
+
+[[326]]
+NULL
+
+[[327]]
+NULL
+
+[[328]]
+NULL
+
+[[329]]
+NULL
+
+[[330]]
+NULL
+
+[[331]]
+NULL
+
+[[332]]
+NULL
+
+[[333]]
+NULL
+
+[[334]]
+NULL
+
+[[335]]
+NULL
+
+[[336]]
+NULL
+
+[[337]]
+NULL
+
+[[338]]
+NULL
+
+[[339]]
+NULL
+
+[[340]]
+NULL
+
+[[341]]
+NULL
+
+[[342]]
+NULL
+
+[[343]]
+NULL
+
+[[344]]
+NULL
+
+[[345]]
+NULL
+
+[[346]]
+NULL
+
+[[347]]
+NULL
+
+[[348]]
+NULL
+
+[[349]]
+NULL
+
+[[350]]
+NULL
+
+[[351]]
+NULL
+
+[[352]]
+NULL
+
+[[353]]
+NULL
+
+[[354]]
+NULL
+
+[[355]]
+NULL
+
+[[356]]
+NULL
+
+[[357]]
+NULL
+
+[[358]]
+NULL
+
+[[359]]
+NULL
+
+[[360]]
+NULL
+
+[[361]]
+NULL
+
+[[362]]
+NULL
+
+[[363]]
+NULL
+
+[[364]]
+NULL
+
+[[365]]
+NULL
+
+[[366]]
+NULL
+
+[[367]]
+NULL
+
+[[368]]
+NULL
+
+[[369]]
+NULL
+
+[[370]]
+NULL
+
+[[371]]
+NULL
+
+[[372]]
+NULL
+
+[[373]]
+NULL
+
+[[374]]
+NULL
+
+[[375]]
+NULL
+
+[[376]]
+NULL
+
+[[377]]
+NULL
+
+[[378]]
+NULL
+
+[[379]]
+NULL
+
+[[380]]
+NULL
+
+[[381]]
+NULL
+
+[[382]]
+NULL
+
+[[383]]
+NULL
+
+[[384]]
+NULL
+
+[[385]]
+NULL
+
+[[386]]
+NULL
+
+[[387]]
+NULL
+
+[[388]]
+NULL
+
+[[389]]
+NULL
+
+[[390]]
+NULL
+
+[[391]]
+NULL
+
+[[392]]
+NULL
+
+[[393]]
+NULL
+
+[[394]]
+NULL
+
+[[395]]
+NULL
+
+[[396]]
+NULL
+
+[[397]]
+NULL
+
+[[398]]
+NULL
+
+[[399]]
+NULL
+
+[[400]]
+NULL
+
+[[401]]
+NULL
+
+[[402]]
+NULL
+
+[[403]]
+NULL
+
+[[404]]
+NULL
+
+[[405]]
+NULL
+
+[[406]]
+NULL
+
+[[407]]
+NULL
+
+[[408]]
+NULL
+
+[[409]]
+NULL
+
+[[410]]
+NULL
+
+[[411]]
+NULL
+
+[[412]]
+NULL
+
+[[413]]
+NULL
+
+[[414]]
+NULL
+
+[[415]]
+NULL
+
+[[416]]
+NULL
+
+[[417]]
+NULL
+
+[[418]]
+NULL
+
+[[419]]
+NULL
+
+[[420]]
+NULL
+
+[[421]]
+NULL
+
+[[422]]
+NULL
+
+[[423]]
+NULL
+
+[[424]]
+NULL
+
+[[425]]
+NULL
+
+[[426]]
+NULL
+
+[[427]]
+NULL
+
+[[428]]
+NULL
+
+[[429]]
+NULL
+
+[[430]]
+NULL
+
+[[431]]
+NULL
+
+[[432]]
+NULL
+
+[[433]]
+NULL
+
+[[434]]
+NULL
+
+[[435]]
+NULL
+
+[[436]]
+NULL
+
+[[437]]
+NULL
+
+[[438]]
+NULL
+
+[[439]]
+NULL
+
+[[440]]
+NULL
+
+[[441]]
+NULL
+
+[[442]]
+NULL
+
+[[443]]
+NULL
+
+[[444]]
+NULL
+
+[[445]]
+NULL
+
+[[446]]
+NULL
+
+[[447]]
+NULL
+
+[[448]]
+NULL
+
+[[449]]
+NULL
+
+[[450]]
+NULL
+
+[[451]]
+NULL
+
+[[452]]
+NULL
+
+[[453]]
+NULL
+
+[[454]]
+NULL
+
+[[455]]
+NULL
+
+[[456]]
+NULL
+
+[[457]]
+NULL
+
+[[458]]
+NULL
+
+[[459]]
+NULL
+
+[[460]]
+NULL
+
+[[461]]
+NULL
+
+[[462]]
+NULL
+
+[[463]]
+NULL
+
+[[464]]
+NULL
+
+[[465]]
+NULL
+
+[[466]]
+NULL
+
+[[467]]
+NULL
+
+[[468]]
+NULL
+
+[[469]]
+NULL
+
+[[470]]
+NULL
+
+[[471]]
+NULL
+
+[[472]]
+NULL
+
+[[473]]
+NULL
+
+[[474]]
+NULL
+
+[[475]]
+NULL
+
+[[476]]
+NULL
+
+[[477]]
+NULL
+
+[[478]]
+NULL
+
+[[479]]
+NULL
+
+[[480]]
+NULL
+
+[[481]]
+NULL
+
+[[482]]
+NULL
+
+[[483]]
+NULL
+
+[[484]]
+NULL
+
+[[485]]
+NULL
+
+[[486]]
+NULL
+
+[[487]]
+NULL
+
+[[488]]
+NULL
+
+[[489]]
+NULL
+
+[[490]]
+NULL
+
+[[491]]
+NULL
+
+[[492]]
+NULL
+
+[[493]]
+NULL
+
+[[494]]
+NULL
+
+[[495]]
+NULL
+
+[[496]]
+NULL
+
+[[497]]
+NULL
+
+[[498]]
+NULL
+
+[[499]]
+NULL
+
+[[500]]
+NULL
+
+[[501]]
+NULL
+
+[[502]]
+NULL
+
+[[503]]
+NULL
+
+[[504]]
+NULL
+
+[[505]]
+NULL
+
+[[506]]
+NULL
+
+[[507]]
+NULL
+
+[[508]]
+NULL
+
+[[509]]
+NULL
+
+[[510]]
+NULL
+
+[[511]]
+NULL
+
+[[512]]
+NULL
+
+[[513]]
+NULL
+
+[[514]]
+NULL
+
+[[515]]
+NULL
+
+[[516]]
+NULL
+
+[[517]]
+NULL
+
+[[518]]
+NULL
+
+[[519]]
+NULL
+
+[[520]]
+NULL
+
+[[521]]
+NULL
+
+[[522]]
+NULL
+
+[[523]]
+NULL
+
+[[524]]
+NULL
+
+[[525]]
+NULL
+
+[[526]]
+NULL
+
+[[527]]
+NULL
+
+[[528]]
+NULL
+
+[[529]]
+NULL
+
+[[530]]
+NULL
+
+[[531]]
+NULL
+
+[[532]]
+NULL
+
+[[533]]
+NULL
+
+[[534]]
+NULL
+
+[[535]]
+NULL
+
+[[536]]
+NULL
+
+[[537]]
+NULL
+
+[[538]]
+NULL
+
+[[539]]
+NULL
+
+[[540]]
+NULL
+
+[[541]]
+NULL
+
+[[542]]
+NULL
+
+[[543]]
+NULL
+
+[[544]]
+NULL
+
+[[545]]
+NULL
+
+[[546]]
+NULL
+
+[[547]]
+NULL
+
+[[548]]
+NULL
+
+[[549]]
+NULL
+
+[[550]]
+NULL
+
+[[551]]
+NULL
+
+[[552]]
+NULL
+
+[[553]]
+NULL
+
+[[554]]
+NULL
+
+[[555]]
+NULL
+
+[[556]]
+NULL
+
+[[557]]
+NULL
+
+[[558]]
+NULL
+
+[[559]]
+NULL
+
+[[560]]
+NULL
+
+[[561]]
+NULL
+
+[[562]]
+NULL
+
+[[563]]
+NULL
+
+[[564]]
+NULL
+
+[[565]]
+NULL
+
+[[566]]
+NULL
+
+[[567]]
+NULL
+
+[[568]]
+NULL
+
+[[569]]
+NULL
+
+[[570]]
+NULL
+
+[[571]]
+NULL
+
+[[572]]
+NULL
+
+[[573]]
+NULL
+
+[[574]]
+NULL
+
+[[575]]
+NULL
+
+[[576]]
+NULL
+
+[[577]]
+NULL
+
+[[578]]
+NULL
+
+[[579]]
+NULL
+
+[[580]]
+NULL
+
+[[581]]
+NULL
+
+[[582]]
+NULL
+
+[[583]]
+NULL
+
+[[584]]
+NULL
+
+[[585]]
+NULL
+
+[[586]]
+NULL
+
+[[587]]
+NULL
+
+[[588]]
+NULL
+
+[[589]]
+NULL
+
+[[590]]
+NULL
+
+[[591]]
+NULL
+
+[[592]]
+NULL
+
+[[593]]
+NULL
+
+[[594]]
+NULL
+
+[[595]]
+NULL
+
+[[596]]
+NULL
+
+[[597]]
+NULL
+
+[[598]]
+NULL
+
+[[599]]
+NULL
+
+[[600]]
+NULL
+
+[[601]]
+NULL
+
+[[602]]
+NULL
+
+[[603]]
+NULL
+
+[[604]]
+NULL
+
+[[605]]
+NULL
+
+[[606]]
+NULL
+
+[[607]]
+NULL
+
+[[608]]
+NULL
+
+[[609]]
+NULL
+
+[[610]]
+NULL
+
+[[611]]
+NULL
+
+[[612]]
+NULL
+
+[[613]]
+NULL
+
+[[614]]
+NULL
+
+[[615]]
+NULL
+
+[[616]]
+NULL
+
+[[617]]
+NULL
+
+[[618]]
+NULL
+
+[[619]]
+NULL
+
+[[620]]
+NULL
+
+[[621]]
+NULL
+
+[[622]]
+NULL
+
+[[623]]
+NULL
+
+[[624]]
+NULL
+
+[[625]]
+NULL
+
+[[626]]
+NULL
+
+[[627]]
+NULL
+
+[[628]]
+NULL
+
+[[629]]
+NULL
+
+[[630]]
+NULL
+
+[[631]]
+NULL
+
+[[632]]
+NULL
+
+[[633]]
+NULL
+
+[[634]]
+NULL
+
+[[635]]
+NULL
+
+[[636]]
+NULL
+
+[[637]]
+NULL
+
+[[638]]
+NULL
+
+[[639]]
+NULL
+
+[[640]]
+NULL
+
+[[641]]
+NULL
+
+[[642]]
+NULL
+
+[[643]]
+NULL
+
+[[644]]
+NULL
+
+[[645]]
+NULL
+
+[[646]]
+NULL
+
+[[647]]
+NULL
+
+[[648]]
+NULL
+
+[[649]]
+NULL
+
+[[650]]
+NULL
+
+[[651]]
+NULL
+
+[[652]]
+NULL
+
+[[653]]
+NULL
+
+[[654]]
+NULL
+
+[[655]]
+NULL
+
+[[656]]
+NULL
+
+[[657]]
+NULL
+
+[[658]]
+NULL
+
+[[659]]
+NULL
+
+[[660]]
+NULL
+
+[[661]]
+NULL
+
+[[662]]
+NULL
+
+[[663]]
+NULL
+
+[[664]]
+NULL
+
+[[665]]
+NULL
+
+[[666]]
+NULL
+
+[[667]]
+NULL
+
+[[668]]
+NULL
+
+[[669]]
+NULL
+
+[[670]]
+NULL
+
+[[671]]
+NULL
+
+[[672]]
+NULL
+
+[[673]]
+NULL
+
+[[674]]
+NULL
+
+[[675]]
+NULL
+
+[[676]]
+NULL
+
+[[677]]
+NULL
+
+[[678]]
+NULL
+
+[[679]]
+NULL
+
+[[680]]
+NULL
+
+[[681]]
+NULL
+
+[[682]]
+NULL
+
+[[683]]
+NULL
+
+[[684]]
+NULL
+
+[[685]]
+NULL
+
+[[686]]
+NULL
+
+[[687]]
+NULL
+
+[[688]]
+NULL
+
+[[689]]
+NULL
+
+[[690]]
+NULL
+
+[[691]]
+NULL
+
+[[692]]
+NULL
+
+[[693]]
+NULL
+
+[[694]]
+NULL
+
+[[695]]
+NULL
+
+[[696]]
+NULL
+
+[[697]]
+NULL
+
+[[698]]
+NULL
+
+[[699]]
+NULL
+
+[[700]]
+NULL
+
+[[701]]
+NULL
+
+[[702]]
+NULL
+
+[[703]]
+NULL
+
+[[704]]
+NULL
+
+[[705]]
+NULL
+
+[[706]]
+NULL
+
+[[707]]
+NULL
+
+[[708]]
+NULL
+
+[[709]]
+NULL
+
+[[710]]
+NULL
+
+[[711]]
+NULL
+
+[[712]]
+NULL
+
+[[713]]
+NULL
+
+[[714]]
+NULL
+
+[[715]]
+NULL
+
+[[716]]
+NULL
+
+[[717]]
+NULL
+
+[[718]]
+NULL
+
+[[719]]
+NULL
+
+[[720]]
+NULL
+
+[[721]]
+NULL
+
+[[722]]
+NULL
+
+[[723]]
+NULL
+
+[[724]]
+NULL
+
+[[725]]
+NULL
+
+[[726]]
+NULL
+
+[[727]]
+NULL
+
+[[728]]
+NULL
+
+[[729]]
+NULL
+
+[[730]]
+NULL
+
+[[731]]
+NULL
+
+[[732]]
+NULL
+
+[[733]]
+NULL
+
+[[734]]
+NULL
+
+[[735]]
+NULL
+
+[[736]]
+NULL
+
+[[737]]
+NULL
+
+[[738]]
+NULL
+
+[[739]]
+NULL
+
+[[740]]
+NULL
+
+[[741]]
+NULL
+
+[[742]]
+NULL
+
+[[743]]
+NULL
+
+[[744]]
+NULL
+
+[[745]]
+NULL
+
+[[746]]
+NULL
+
+[[747]]
+NULL
+
+[[748]]
+NULL
+
+[[749]]
+NULL
+
+[[750]]
+NULL
+
+[[751]]
+NULL
+
+[[752]]
+NULL
+
+[[753]]
+NULL
+
+[[754]]
+NULL
+
+[[755]]
+NULL
+
+[[756]]
+NULL
+
+[[757]]
+NULL
+
+[[758]]
+NULL
+
+[[759]]
+NULL
+
+[[760]]
+NULL
+
+[[761]]
+NULL
+
+[[762]]
+NULL
+
+[[763]]
+NULL
+
+[[764]]
+NULL
+
+[[765]]
+NULL
+
+[[766]]
+NULL
+
+[[767]]
+NULL
+
+[[768]]
+NULL
+
+[[769]]
+NULL
+
+[[770]]
+NULL
+
+[[771]]
+NULL
+
+[[772]]
+NULL
+
+[[773]]
+NULL
+
+[[774]]
+NULL
+
+[[775]]
+NULL
+
+[[776]]
+NULL
+
+[[777]]
+NULL
+
+[[778]]
+NULL
+
+[[779]]
+NULL
+
+[[780]]
+NULL
+
+[[781]]
+NULL
+
+[[782]]
+NULL
+
+[[783]]
+NULL
+
+[[784]]
+NULL
+
+[[785]]
+NULL
+
+[[786]]
+NULL
+
+[[787]]
+NULL
+
+[[788]]
+NULL
+
+[[789]]
+NULL
+
+[[790]]
+NULL
+
+[[791]]
+NULL
+
+[[792]]
+NULL
+
+[[793]]
+NULL
+
+[[794]]
+NULL
+
+[[795]]
+NULL
+
+[[796]]
+NULL
+
+[[797]]
+NULL
+
+[[798]]
+NULL
+
+[[799]]
+NULL
+
+[[800]]
+NULL
+
+[[801]]
+NULL
+
+[[802]]
+NULL
+
+[[803]]
+NULL
+
+[[804]]
+NULL
+
+[[805]]
+NULL
+
+[[806]]
+NULL
+
+[[807]]
+NULL
+
+[[808]]
+NULL
+
+[[809]]
+NULL
+
+[[810]]
+NULL
+
+[[811]]
+NULL
+
+[[812]]
+NULL
+
+[[813]]
+NULL
+
+[[814]]
+NULL
+
+[[815]]
+NULL
+
+[[816]]
+NULL
+
+[[817]]
+NULL
+
+[[818]]
+NULL
+
+[[819]]
+NULL
+
+[[820]]
+NULL
+
+[[821]]
+NULL
+
+[[822]]
+NULL
+
+[[823]]
+NULL
+
+[[824]]
+NULL
+
+[[825]]
+NULL
+
+[[826]]
+NULL
+
+[[827]]
+NULL
+
+[[828]]
+NULL
+
+[[829]]
+NULL
+
+[[830]]
+NULL
+
+[[831]]
+NULL
+
+[[832]]
+NULL
+
+[[833]]
+NULL
+
+[[834]]
+NULL
+
+[[835]]
+NULL
+
+[[836]]
+NULL
+
+[[837]]
+NULL
+
+[[838]]
+NULL
+
+[[839]]
+NULL
+
+[[840]]
+NULL
+
+[[841]]
+NULL
+
+[[842]]
+NULL
+
+[[843]]
+NULL
+
+[[844]]
+NULL
+
+[[845]]
+NULL
+
+[[846]]
+NULL
+
+[[847]]
+NULL
+
+[[848]]
+NULL
+
+[[849]]
+NULL
+
+[[850]]
+NULL
+
+[[851]]
+NULL
+
+[[852]]
+NULL
+
+[[853]]
+NULL
+
+[[854]]
+NULL
+
+[[855]]
+NULL
+
+[[856]]
+NULL
+
+[[857]]
+NULL
+
+[[858]]
+NULL
+
+[[859]]
+NULL
+
+[[860]]
+NULL
+
+[[861]]
+NULL
+
+[[862]]
+NULL
+
+[[863]]
+NULL
+
+[[864]]
+NULL
+
+[[865]]
+NULL
+
+[[866]]
+NULL
+
+[[867]]
+NULL
+
+[[868]]
+NULL
+
+[[869]]
+NULL
+
+[[870]]
+NULL
+
+[[871]]
+NULL
+
+[[872]]
+NULL
+
+[[873]]
+NULL
+
+[[874]]
+NULL
+
+[[875]]
+NULL
+
+[[876]]
+NULL
+
+[[877]]
+NULL
+
+[[878]]
+NULL
+
+[[879]]
+NULL
+
+[[880]]
+NULL
+
+[[881]]
+NULL
+
+[[882]]
+NULL
+
+[[883]]
+NULL
+
+[[884]]
+NULL
+
+[[885]]
+NULL
+
+[[886]]
+NULL
+
+[[887]]
+NULL
+
+[[888]]
+NULL
+
+[[889]]
+NULL
+
+[[890]]
+NULL
+
+[[891]]
+NULL
+
+[[892]]
+NULL
+
+[[893]]
+NULL
+
+[[894]]
+NULL
+
+[[895]]
+NULL
+
+[[896]]
+NULL
+
+[[897]]
+NULL
+
+[[898]]
+NULL
+
+[[899]]
+NULL
+
+[[900]]
+NULL
+
