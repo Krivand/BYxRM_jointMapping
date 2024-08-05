@@ -1,13 +1,23 @@
 #!/bin/bash
-#SBATCH --job-name=rawAssoc             # Job name
-#SBATCH --output=rawAssoc.out	 	    # Standard output and error log
-#SBATCH --error=rawAssoc.err 	 	    # Error log
-#SBATCH --time=24:00:00                 # Time limit hrs:min:sec
-#SBATCH --ntasks=1                      # Number of tasks (usually 1 for a single R script)
-#SBATCH --cpus-per-task=128             # Number of CPU cores per task
-#SBATCH --mem=480G                      # Memory per node
-#SBATCH --mail-type=END,FAIL            # Mail events (NONE, BEGIN, END, FAIL, ALL)
-#SBATCH --mail-user=vandy147@umn.edu	# Where to send mail
+# can be called within project folder using ./jRawAssoc.sh 
+# don't forget to allow permissions using chmod +x jRawAssoc.sh
+
+# Define project path
+PROJECTPATH=/home/albertf/vandy147/p05
+
+# SPECIFY PARAMETERS
+NUM_JOBS=8
+BASE_NAME="jRawAssoc"
+WALL_TIME="8:00:00"
+MEMORY="240G"
+MAIL_TYPE="ALL"
+MAIL_USER="vandy147@umn.edu"
+CPUS_PER_TASK=64
+
+# Calculate the number of elements per job
+TOTAL_ELEMENTS=3593
+ELEMENTS_PER_JOB=$((TOTAL_ELEMENTS / NUM_JOBS))
+REMAINDER=$((TOTAL_ELEMENTS % NUM_JOBS))
 
 # Unset R_HOME to avoid conflicts
 unset R_HOME
@@ -15,5 +25,24 @@ unset R_HOME
 # Load the R module (make sure to specify the version you want)
 module load R/4.4.0-openblas-rocky8
 
-# Run the R script
-Rscript ~/p05/joint_remap_raw_association_script.R
+START=1
+
+for ((i=0; i<NUM_JOBS; i++)); do
+  END=$((START + ELEMENTS_PER_JOB - 1))
+  if [ $i -lt $REMAINDER ]; then
+    END=$((END + 1))
+  fi
+
+  sbatch --job-name=${BASE_NAME}_${i} \
+         --output=${PROJECTPATH}/logs/${BASE_NAME}_${i}.out \
+         --error=${PROJECTPATH}/logs/${BASE_NAME}_${i}.err \
+         --time=$WALL_TIME \
+         --ntasks=1 \
+         --cpus-per-task=$CPUS_PER_TASK \
+         --mem=$MEMORY \
+         --mail-type=$MAIL_TYPE \
+         --mail-user=$MAIL_USER \
+         --wrap="Rscript ${PROJECTPATH}/${BASE_NAME}.R ${START} ${END}"
+
+  START=$((END + 1))
+done

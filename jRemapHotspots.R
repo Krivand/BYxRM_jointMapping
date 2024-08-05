@@ -10,7 +10,12 @@
 # RETRIEVE AND FORMAT NECESSARY OBJECTS #
 #########################################
 
-# SOURCE FXNS AND CONSTANTS
+# retrieve args
+args = commandArgs(trailingOnly = TRUE)
+startIdx = as.numeric(args[1])
+endIdx = as.numeric(args[2])
+
+# source functions and constants
 source(paste0("/home/albertf/vandy147/p05/",
               "remap_functions.R"))
 
@@ -55,32 +60,53 @@ if (!file.exists(paste0(imed, "unionBg.rda"))) {
 }
 
 # how many strong QTLs are most genes experiencing from other chroms?
-# currently so far the worst is 48 for 2 genes
-# not worth switching to random effects due to covars approaching sample num
+# not worth switching to random effects bc # covars not approaching # samples
 sapply(unionBg,function(x)sapply(x,function(y)length(y))) %>% 
   unlist() %>% table()
 
-# PREPARE THE HOTSPOT MARKERS FOR ASSOCATION
+# add new hand-curated hotspots
+geneInfo = read.csv(paste0(
+  raw,file='yeastmine_results_2024-06-18T13-15-41.csv'))
+newHotspots = geneInfo[which(geneInfo$Gene...Standard.Name %in% 
+                               c('URA3','LEU2','AMN1')),] %>%   
+  select(
+    `Gene...Chromosome...Identifier`,
+    `Gene...Chromosome.Location...Start`,
+    `Gene...Chromosome.Location...End`
+  ) %>% setNames(c('chr','start','end')) %>%
+  bind_rows(
+    data.frame(
+      chr = c("chrX", "chrXV"),
+      start = c(295000, 1000000),
+      end = c(295000, 1000000)
+    )
+  ) %>% makeGRangesFromDataFrame
 
-# hotspot data
+print('Please note the KRE33 hotspot chrXIV:372376_G/A is dropped')  
+print('Here are additional new hotspots')
+print(newHotspots)
+
+# get the indices of hotspots approximated in Grossbach-coordinates
+gr_studies = markRanger(colnames(studies$Brem_2002$gdata))
 hotspots = readxl::read_excel(
   paste0(raw,'SI_Data_08_hotspotTableForPaper_topGenes100_170420.xlsx')) %>%
   as.data.frame()
-
-# get the indices of hotspots approximated in Brem-coordinates
-gr_studies = markRanger(colnames(studies$Brem_2002$gdata))
-gr_hotspots = markRanger(hotspots$hotspotMarker)
+gr_hotspots = markRanger(hotspots$hotspotMarker[
+  hotspots$hotspotMarker != 'chrXIV:372376_G/A']) %>%
+  (function(x)c(x,newHotspots)) %>% sort()
+mcols(gr_hotspots)$josh = grToJosh(gr_hotspots)
 nearest_indices = nearest(gr_hotspots, gr_studies)
 portedHotspots = gr_studies[nearest_indices] %>% grToJosh()
-rm(gr_studies,gr_hotspots,nearest_indices)
+rm(gr_studies,gr_hotspots,nearest_indices,newHotspots)
 
 #########################################################
 # JOINTLY REMAP THE HOTSPOT MARKERS FOR GENO & IXN QTLS #
 #########################################################
 
+# Detect number of cores and run
 jointMarkerTest(
     studies = studies,
-    targetMarkers = portedHotspots,
+    targetMarkers = portedHotspots[startIdx:endIdx],
     unionBg = unionBg, 
     smetadata = scaMetadata,
     suppGenes = doubleSupp,
@@ -89,6 +115,6 @@ jointMarkerTest(
     fn = "joint_hotspot_QTLs",
     correctBG = TRUE,
     correctGRM = FALSE,
-    cores = 102,
+    cores = detectCores(),
     chromosomes = NULL
 )

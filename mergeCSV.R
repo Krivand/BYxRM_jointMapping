@@ -1,9 +1,15 @@
-# SOURCE FXNS AND CONSTANTS
-source(paste0("/home/albertf/vandy147/p05/",
-              "remap_functions.R"))
+# Source functions and constants
+source("/home/albertf/vandy147/p05/remap_functions.R")
 
-# Save the combined dataframe as an RDA file
-roundupCSV(inputPath = paste0(imed, "joint_hotspot_QTLs"),
-           outputPath = imed, rName = "jhQTLs", cleanUp = FALSE)
-roundupCSV(inputPath = paste0(imed, "unfiltered_assocs"),
-           outputPath = imed, rName = "unfilteredAssocs", cleanUp = FALSE)
+# Parse command-line arguments
+args = commandArgs(trailingOnly = TRUE)
+if (length(args) != 4) {
+  stop("Four arguments must be supplied (inputPath, outputPath, rName, cleanUp).", call. = FALSE)
+}
+inputPath = args[1]
+outputPath = args[2]
+rName = args[3]
+cleanUp = as.logical(args[4])
+
+# Call the roundupCSV function
+roundupCSV(inputPath = inputPath, outputPath = outputPath, rName = rName, cleanUp = cleanUp)

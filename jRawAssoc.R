@@ -10,7 +10,12 @@
 # RETRIEVE AND FORMAT NECESSARY OBJECTS #
 #########################################
 
-# SOURCE FXNS AND CONSTANTS
+# retrieve args
+args = commandArgs(trailingOnly = TRUE)
+startIdx = as.numeric(args[1])
+endIdx = as.numeric(args[2])
+
+# source functions and constants
 source(paste0("/home/albertf/vandy147/p05/",
               "remap_functions.R"))
 
@@ -54,19 +59,20 @@ if (!file.exists(paste0(imed, "unionBg.rda"))) {
   
 }
 
-################################################################
-# CRUDELY ASSOCIATE ALL GENE-MARKER PAIRS FOR THE FOUR FLAVORS #
-################################################################
+###########################################
+# CRUDELY ASSOCIATE ALL GENE-MARKER PAIRS #
+###########################################
 
+# Detect number of cores and run
 rawAssocs(
     studies = studies,
-    targetMarkers = colnames(studies$Brem_2002$gdata)[900:1796],
+    targetMarkers = colnames(studies$Brem_2002$gdata)[startIdx:endIdx],
     unionBg = unionBg,
     smetadata = scaMetadata,
     suppGenes = doubleSupp,
     fn = 'unfiltered_assocs',
     correctBG = TRUE,
     correctGRM = FALSE,
-    cores = 32,
+    cores = detectCores(),
     chromosomes = NULL
 )

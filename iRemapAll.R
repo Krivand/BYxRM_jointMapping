@@ -32,6 +32,9 @@ chrFeatures[!is.na(chrFeatures$Standard_Gene_Name),] %>%
 # PREPARE GROSSBACH GENOTYPES #
 ###############################
 
+# build a directory for genoT quality assurance
+ensure_directory(paste0(asys,'genotype_QA/'))
+
 # GROSSBACH 2022 DEDUPLICATED GENOTYPE MATRIX AND INTERVALS
 
 # load table 
@@ -55,6 +58,8 @@ colnames(genoG) = mapply(function(x,y)paste0(x,":",y),
 # get the BY and RM names into an appropriate form
 rownames(genoG) = unifyChain(rownames(genoG),c('BY','RM'))
 
+
+
 # check to make sure the NA run sum matches the raw number of NAs in the data
 row_NA_scan(genoG,iG$chr) %>% unlist() %>% 
   (function(test)sum(test) == sum(is.na(genoG)))
@@ -65,7 +70,7 @@ msngGeno = is.na(genoG)
 # use simple imputation to deal with the spattering of NA values
 genoG = impute_geno(genoG,iG$chr)
 
-# per segregant see how these were imputed
+# Per segregant, see how these were imputed
 mapply(function(geno_row, msng_row) table(geno_row[msng_row]), 
        as.data.frame(t(genoG)), 
        as.data.frame(t(msngGeno)), 
@@ -80,8 +85,16 @@ mapply(function(geno_row, msng_row) table(geno_row[msng_row]),
   summarise(across(c(`-1`, `0`, `1`), sum, .names = "{col}")) %>%
   ungroup() %>%
   rename(segregant = prefix) %>%
-  mutate(num_imputed = `-1` + `0` + `1`, tot_markers = ncol(genoG)) %>%
-  write.csv(paste0(asys,'genoImputation.csv'),row.names=FALSE)
+  mutate(
+    num_imputed = `-1` + `0` + `1`, 
+    tot_markers = ncol(genoG),
+    `BY(-1)` = `-1`,
+    `Avg(0)` = `0`,
+    `RM(1)` = `1`
+  ) %>%
+  select(-`-1`, -`0`, -`1`) %>%
+  write.csv(paste0(asys,'genotype_QA/',
+                   'Grossbach_genotype_imputation.csv'),row.names=FALSE)
 rm(msngGeno)
 
 # CREATER A MARKER KEY FOR THE GROSSBACH GENOTYPES
@@ -139,11 +152,15 @@ for(i in uniB){
   }
 }
 
-# proportion of genoT that remains unassigned after averaging step
-sum(is.na(genoT))/length(genoT)
+# genoT information object
+infoGenoT = c(rep(NA,4)) %>% 
+  `names<-`(c('pass1NA_num','num_elements','pass1NA_frac','isFractional'))
 
-# proportion of genoT that has fractional genotypes after averaging
-genoT %>% (function(x)sum(abs(x) != 1,na.rm=T))/length(genoT)
+# get information about genoT transformation
+infoGenoT['pass1NA_num'] = sum(is.na(genoT))
+infoGenoT['num_elements'] = length(genoT)
+infoGenoT['pass1NA_frac'] = infoGenoT['pass1NA_num']/infoGenoT['num_elements']
+infoGenoT['isFractional'] = sum(abs(genoT) != 1,na.rm=T)/length(genoT)
 
 # figure out which elements of gA had no gG mapped to them
 missingCols = which(!1:length(gG) %in% uniB)
@@ -166,6 +183,35 @@ for(i in seq_along(missingCols)) {
 rownames(genoT) = rownames(counts$gdata)
 colnames(genoT) = colnames(genoG)
 
+# finish and save summary csv
+infoGenoT = c(infoGenoT,(summary(genoT[abs(genoT) != 1])) %>% 
+                `names<-`(c('frac_min','frac_1stQ','frac_median',
+                            'frac_mean','frac_3rdQ','frac_max'))) %>%
+  enframe(name = "measure", value = "value")
+
+write.csv(infoGenoT, row.names = FALSE,
+          file=paste0(
+            asys,'genotype_QA/',
+            'Albert_2018_to_Grossbach_2022_geno_coord_move_stats.csv'))
+
+# plot and save
+p = ggplot(data.frame(genoT = genoT[abs(genoT) != 1]), aes(x = genoT)) +
+  geom_histogram(bins = 30, color = "black") +
+  labs(
+    title = 
+      "Albert 2018 ported to Grossbach 2022 fractional genotype distribution",
+    x = "Fractional genotype value",
+    y = "Frequency"
+  ) +
+  theme_bw()
+ggsave(plot = p, width = 7.5, height = 5,
+       filename = 
+         paste0(asys,'genotype_QA/',
+                'Albert_2018_to_Grossbach_2022_geno_coord_move_stats.pdf'))
+
+# remove QA objects and move on
+rm(infoGenoT,p)
+
 ########################
 # PREPROCESS BREM 2002 #
 ########################
@@ -175,21 +221,21 @@ if (!file.exists(paste0(imed, "Brem_2002.rda"))) {
   
   print('Brem_2002 not processed and creating now...')
   
-  # load dye channels, remove rows with too much missing, and impute by averages
+  # Load dye channels, remove rows with too much missing, and impute by averages
   GDS91 = cleanGDS(raw,'GDS91.soft',"BY-",threshNA,chrFeatures,old='-',new='.')
   GDS92 = cleanGDS(raw,'GDS92.soft',"-BY",threshNA,chrFeatures,old='-',new='.')
   
-  # merge the dye channels and attach genotype
+  # Merge the dye channels and attach genotype
   Brem_2002 = list(-dyeMerge(GDS91,GDS92),genoG)
   names(Brem_2002) = c('pheno','gdata')
   rm(GDS91,GDS92) 
   
-  # there are no covariates so add the mean center filler and pclean is scaled
+  # There are no covariates so add the mean center filler and pclean is scaled
   Brem_2002$covars = matrix(1, nrow = nrow(Brem_2002$gdata)) %>%
     `rownames<-`(rownames(Brem_2002$gdata))
   Brem_2002$pclean = scale(Brem_2002$pheno)
   
-  # harmonize and save
+  # Harmonize and save
   Brem_2002 = harmonize(Brem_2002)
   save(Brem_2002,file=paste0(imed,"Brem_2002.rda"))
   
@@ -208,23 +254,23 @@ if (!file.exists(paste0(imed, "Brem_2005.rda"))) {
   
   print('Brem_2005 not processed and creating now...')
   
-  # load dye channels, remove rows with too much missing, and impute by averages
+  # Load dye channels, remove rows with too much missing, and impute by averages
   GDS1115 = cleanGDS(raw,'GDS1115.soft','Cy5',
                      threshNA,chrFeatures,old='-',new='.')
   GDS1116 = cleanGDS(raw,'GDS1116.soft','Cy3',
                      threshNA,chrFeatures,old='-',new='.')
   
-  # merge the dye channels and attach genotype
+  # Merge the dye channels and attach genotype
   Brem_2005 = list(-dyeMerge(GDS1115,GDS1116),genoG)
   names(Brem_2005) = c('pheno','gdata')
   rm(GDS1115,GDS1116)
   
-  # there are no covariates so add the mean center filler and pclean is scaled
+  # There are no covariates so add the mean center filler and pclean is scaled
   Brem_2005$covars = matrix(1, nrow = nrow(Brem_2005$gdata)) %>%
     `rownames<-`(rownames(Brem_2005$gdata))
   Brem_2005$pclean = scale(Brem_2005$pheno)
   
-  # harmonize and save
+  # Harmonize and save
   Brem_2005 = harmonize(Brem_2005)
   save(Brem_2005,file=paste0(imed,"Brem_2005.rda"))
   
@@ -244,7 +290,7 @@ if (!file.exists(paste0(imed, "SmithEth_2008.rda")) ||
   
   print('SmithEth_2008 or SmithGlc_2008 not processed and creating now...')
   
-  # pepare phenotype data for splitting
+  # Prepare phenotype data for splitting
   Smith_2008_pheno = readxl::read_excel(
     paste0(raw,'pbio.0060083.sd002.xls')) %>%
     as.data.frame()
@@ -260,13 +306,13 @@ if (!file.exists(paste0(imed, "SmithEth_2008.rda")) ||
   colnames(Smith_2008_pheno) = nuCol
   rownames(Smith_2008_pheno) = nuRow
   
-  # generate metadata for the split
+  # Generate metadata for the split
   SmithMeta = sapply(nuRow,function(x)strsplit(x,(" "))) %>% 
     (function(x)do.call(rbind,x)) %>%
     `colnames<-`(c('id','segregant','condition')) %>% as.data.frame()
   rm(nuCol,nuRow)
   
-  # split the ethanol and glucose phenotype data
+  # Split the ethanol and glucose phenotype data
   SmithEth_2008_pheno = Smith_2008_pheno[
     which(SmithMeta$condition  == 'ethanol'),]
   rownames(SmithEth_2008_pheno) = SmithMeta$segregant[
@@ -277,9 +323,7 @@ if (!file.exists(paste0(imed, "SmithEth_2008.rda")) ||
     which(SmithMeta$condition  == 'glucose')]
   rm(Smith_2008_pheno,SmithMeta)
   
-  # Fix names and impute missing values by average
-  
-  # SmithEth_2008_pheno
+  # Fix names and impute missing values by average (EtOH)
   SmithEth_2008_pheno_NAs = is.na(SmithEth_2008_pheno)
   print(paste('There are', sum(SmithEth_2008_pheno_NAs),
               'NAs of', length(SmithEth_2008_pheno_NAs),
@@ -291,11 +335,10 @@ if (!file.exists(paste0(imed, "SmithEth_2008.rda")) ||
   print('Summary of imputed values in SmithEth_2008_pheno')
   print(summary(SmithEth_2008_pheno[SmithEth_2008_pheno_NAs]))
   rm(SmithEth_2008_pheno_NAs)
-  
   rownames(SmithEth_2008_pheno) = rownames(SmithEth_2008_pheno) %>%
     (function(x) sapply(x, function(y) gsub("_", ".", y)))
   
-  # SmithGlc_2008_pheno
+  # Fix names and impute missing values by average (Glucose)
   SmithGlc_2008_pheno_NAs = is.na(SmithGlc_2008_pheno)
   print(paste('There are', sum(SmithGlc_2008_pheno_NAs), 
               'NAs of', length(SmithGlc_2008_pheno_NAs), 
@@ -347,11 +390,9 @@ if (!file.exists(paste0(imed, "Khan_2009.rda"))) {
   
   print('Khan_2009 not processed and creating now...')
   
-  # MAKE SURE YOU GET THIS DONE FOR THE SRM AND NOT THE DISCOVERY SET
+  # Load in data and impute by average
   Khan_2009_pheno = read.delim(paste0(raw,'Khan_2009_protein.tsv'),
                                sep='\t',row.names=1,check.names = F) 
-  
-  # impute by average
   Khan_2009_pheno = as.matrix(Khan_2009_pheno) %>% rmIterNA(t=threshNA) 
   Khan_2009_pheno_NAs = is.na(Khan_2009_pheno)
   print(paste('There are', sum(Khan_2009_pheno_NAs), 'NAs of', 
@@ -363,12 +404,12 @@ if (!file.exists(paste0(imed, "Khan_2009.rda"))) {
   print(summary(Khan_2009_pheno[Khan_2009_pheno_NAs]))
   rm(Khan_2009_pheno_NAs)
   
-  # fix column names
+  # Fix column names
   colnames(Khan_2009_pheno) = colnames(Khan_2009_pheno) %>% 
     (function(x)sapply(x,function(y)sub("^X", "", y))) %>%
     (function(x)sapply(x,function(y)gsub("_", ".", y)))
   
-  # harmonize and save
+  # Harmonize and save
   Khan_2009 = list(t(Khan_2009_pheno),genoG)
   names(Khan_2009) = c('pheno','gdata')
   rm(Khan_2009_pheno)
@@ -393,19 +434,19 @@ if (!file.exists(paste0(imed, "Foss_2011.rda"))) {
   
   print('Foss_2011 not processed and creating now...')
   
-  # read Foss data into dataframe
+  # Read Foss data into dataframe
   Foss_2011_pheno = readxl::read_excel(
     paste0(raw,'foss_11_protein_measures.xls')) %>%
     as.data.frame()
   
-  # fix dimnames and make appropriate columns numeric
+  # Fix dimnames and make appropriate columns numeric
   rownames(Foss_2011_pheno) = Foss_2011_pheno$`systematic name`
   holder = list(colnames(Foss_2011_pheno),rownames(Foss_2011_pheno))
   Foss_2011_pheno = Foss_2011_pheno[,-c(1:3)] %>% mutate_all(as.numeric) 
   colnames(Foss_2011_pheno) = colnames(Foss_2011_pheno) %>%
     (function(x)sapply(x,function(y)gsub("_", ".", y)))
   
-  # impute by averages and log
+  # Impute by averages and log
   Foss_2011_pheno = as.matrix(Foss_2011_pheno) %>% rmIterNA(t=threshNA)
   Foss_2011_pheno_NAs = is.na(Foss_2011_pheno)
   print(paste('There are', sum(Foss_2011_pheno_NAs), 'NAs of', 
@@ -418,7 +459,7 @@ if (!file.exists(paste0(imed, "Foss_2011.rda"))) {
   rm(Foss_2011_pheno_NAs)
   Foss_2011_pheno = t(Foss_2011_pheno) %>% log2()
   
-  # harmonize and save
+  # Harmonize and save
   Foss_2011 = list(Foss_2011_pheno,genoG)
   names(Foss_2011) = c('pheno','gdata')
   rm(Foss_2011_pheno)
@@ -443,19 +484,19 @@ if (!file.exists(paste0(imed, "Picotti_2013.rda"))) {
   
   print('Picotti_2013 not processed and creating now...')
   
-  # load SRM dataset
+  # Load SRM dataset
   Picotti_2013_pheno = read.csv(
     paste0(raw,"Picotti_2013_SRM_dataset.csv"),check.names = F) %>%
     dplyr::rename(protein = `protein /strain`)
   
-  # go from common gene names to ORF names
+  # Go from common gene names to ORF names
   Picotti_2013_pheno$protein = toupper(
     Picotti_2013_pheno$protein) %>% 
     (function(v)ifelse(v == "ARG56", "ARG5,6", v)) %>% 
     (function(x)sapply(x,function(y)sub("\\..*", "", y))) %>% 
     dictReplace(chrFeatures[c('Standard_Gene_Name','Feature_Name')])
   
-  # check if anything exceeds NA threshold in Picotti
+  # Check if anything exceeds NA threshold in Picotti
   print("For Picotti 2013:")
   Picotti_2013_pheno %>%
     { 
@@ -488,7 +529,6 @@ if (!file.exists(paste0(imed, "Picotti_2013.rda"))) {
       }
     }
   
-  # print the number of replicates at the phenotype and strain levels
   print('Number of Picotti phenotypes with replicate measurements:')
   Picotti_2013_pheno %>%
     group_by(protein) %>%
@@ -518,19 +558,19 @@ if (!file.exists(paste0(imed, "Picotti_2013.rda"))) {
     { length(.) } %>%
     print()
   
-  # average separate measurements of proteins
+  # Average separate measurements of proteins
   Picotti_2013_pheno = meanDedupe(as.matrix(Picotti_2013_pheno[,-1]),
                                   Picotti_2013_pheno$protein) %>% t()
   
-  # remove all BY and RM replicates
+  # Remove all BY and RM replicates
   Picotti_2013_pheno = Picotti_2013_pheno %>%
     { .[!grepl("BY_|RM_", rownames(.)), , drop = FALSE] }
   
-  # average separate measurements of strains
+  # Average separate measurements of strains
   Picotti_2013_pheno = meanDedupe(
     Picotti_2013_pheno,rownames(Picotti_2013_pheno) %>% sub("_.*", "", .))
 
-  # impute by average
+  # Impute by average
   Picotti_2013_pheno_NAs = is.na(Picotti_2013_pheno)
   print(paste('There are', sum(Picotti_2013_pheno_NAs), 
               'NAs of', length(Picotti_2013_pheno_NAs), 
@@ -542,7 +582,7 @@ if (!file.exists(paste0(imed, "Picotti_2013.rda"))) {
   print(summary(Picotti_2013_pheno[Picotti_2013_pheno_NAs]))
   rm(Picotti_2013_pheno_NAs)
   
-  # harmonize and save
+  # Harmonize and save
   Picotti_2013 = list(Picotti_2013_pheno,genoG)
   names(Picotti_2013) = c('pheno','gdata')
   rm(Picotti_2013_pheno)
@@ -563,18 +603,18 @@ if (!file.exists(paste0(imed, "Picotti_2013.rda"))) {
 # PREPROCESS ALBERT 2018 #
 ##########################
 
-# THE VERSION WITH ITS ORIGINAL MARKERS
+# This is the version with the original 2018 marker coordinates
 if (!file.exists(paste0(imed, "Albert_2018.rda"))) {
   
   print('Albert_2018 not processed and creating now...')
   
-  # load the log2 transformed tpm matrix 
+  # Load the log2 transformed tpm matrix 
   load(paste0(raw,'log2_t.tpm.matrix.RData')) # obj name: t.tpm.matrix
   
-  # load growth batch and OD covariates
+  # Load growth batch and OD covariates
   load(paste0(raw,"covariates.OD.RData")) # obj name: covariates.OD
   
-  # prepare mappable object and save (no harmonizaton necessary)
+  # Prepare mappable object and save (no harmonizaton necessary)
   Albert_2018 = list()
   Albert_2018$pheno = t.tpm.matrix
   Albert_2018$gdata = counts$gdata[,!duplicated(counts$gdata, MARGIN=2)] #dedup
@@ -593,10 +633,10 @@ if (!file.exists(paste0(imed, "Albert_2018.rda"))) {
 # PREPROCESS ALBERT ALT 2018 #
 ##############################
 
-# THE VERSION WITH MARKER COORDINATES PORTED TO GROSSBACH SPACE
+# This is the version with the markers ported into Grossbach space
 if (!file.exists(paste0(imed, "AlbertAlt_2018.rda"))) {
   
-  # affix the ported markers to create AlbertAlt from Albert
+  # Affix the ported markers to create AlbertAlt from Albert
   print('AlbertAlt_2018 not processed and creating now...')
   AlbertAlt_2018 = Albert_2018
   AlbertAlt_2018$gdata = genoT
@@ -616,7 +656,7 @@ if (!file.exists(paste0(imed, "AlbertAlt_2018.rda"))) {
 if (!file.exists(paste0(imed, "GrossbachPRT_2022.rda")) ||
     !file.exists(paste0(imed, "GrossbachRNA_2022.rda"))) {
   
-  # METADATA PROCESSING
+  # process metadata
   Grossbach_2022_meta = readxl::read_excel(
     paste0(raw,"msb202110712-sup-0005-datasetev3.xlsx"),
     sheet='metadata') %>% as.data.frame() %>%
@@ -627,7 +667,7 @@ if (!file.exists(paste0(imed, "GrossbachPRT_2022.rda")) ||
            riboAmpBatch = as.factor(riboAmpBatch),
            MSbatch_unmod,
            LCcolumn_unmod)
-  
+
   Grossbach_2022_meta$strain = Grossbach_2022_meta$strain %>% 
     unifyChain(c('BY','RM'))
   
@@ -650,12 +690,12 @@ if (!file.exists(paste0(imed, "GrossbachRNA_2022.rda"))) {
   GrossbachRNA_2022$pheno = t(GrossbachRNA_2022$pheno[,-1])
   colnames(GrossbachRNA_2022$pheno) = tempGeneNames
   
-  # initialize the residualizer object and get the Josh dedupe vector
+  # Initialize the residualizer object and get the Josh dedupe vector
   cleanerRNA = Grossbach_2022_meta[match(rownames(GrossbachRNA_2022$pheno),
                                         Grossbach_2022_meta$culture),] %>%
     (function(x)x[,c('OD', 'cultureBatch', 'riboAmpBatch',"strain")])
 
-  # print out strain replicate information
+  # Print out strain replicate information
   print('Number of replicated strains')
   cleanerRNA %>% filter(!strain %in% c("BY", "RM")) %>% 
     filter(duplicated(strain) | duplicated(strain, fromLast = TRUE)) %>% 
@@ -664,14 +704,14 @@ if (!file.exists(paste0(imed, "GrossbachRNA_2022.rda"))) {
   cleanerRNA %>%   filter(!strain %in% c("BY", "RM")) %>% 
     distinct(strain) %>% nrow()
   
-  # attach the other three necessary list elements
+  # Attach the other three necessary list elements
   GrossbachRNA_2022$gdata = genoG
   GrossbachRNA_2022$pclean = matrix(NA,nrow=nrow(GrossbachRNA_2022$pheno),
                                     ncol=ncol(GrossbachRNA_2022$pheno))
   GrossbachRNA_2022$covars = cleanerRNA[
     ,c('OD', 'cultureBatch', 'riboAmpBatch')]
   
-  # REMOVE COVARIATES FROM THE GROSSBACH RNA DATA
+  # Regress out covariates
   print('REGRESSING COVARIATES OUT OF GROSSBACH RNA DATA')
   pb = txtProgressBar(min = 0, max = ncol(GrossbachRNA_2022$pheno), style = 3)
   for (i in 1:ncol(GrossbachRNA_2022$pheno)) {
@@ -682,23 +722,22 @@ if (!file.exists(paste0(imed, "GrossbachRNA_2022.rda"))) {
     setTxtProgressBar(pb, i)
   }
   
-  # deduplicate strains for the joint mapping pipeline by averaging
+  # Deduplicate strains for the joint mapping pipeline by averaging
   GrossbachRNA_2022$pclean = meanDedupe(GrossbachRNA_2022$pclean,
                                         cleanerRNA$strain) %>% scale()
   colnames(GrossbachRNA_2022$pclean) = colnames(GrossbachRNA_2022$pheno)
   
-  # ensure one-hot encoding of covariates
+  # Ensure one-hot encoding of covariates
   GrossbachRNA_2022$covars = oneHotCo(
     GrossbachRNA_2022$covars)
   
-  # deduplicate the individual phenos and corresponding covars by averaging
+  # Deduplicate the individual phenos and corresponding covars by averaging
   GrossbachRNA_2022$covars = meanDedupe(
     GrossbachRNA_2022$covars,cleanerRNA$strain)
   GrossbachRNA_2022$pheno = meanDedupe(
     GrossbachRNA_2022$pheno,cleanerRNA$strain)
   
-  
-  # remove unnecessary items, harmonize unnecessary elements, and save
+  # Remove unnecessary items, harmonize unnecessary elements, and save
   rm(cleanerRNA)
   GrossbachRNA_2022 = harmonize(GrossbachRNA_2022)
   save(GrossbachRNA_2022,file=paste0(imed,'GrossbachRNA_2022.rda'))
@@ -718,7 +757,7 @@ if (!file.exists(paste0(imed, "GrossbachPRT_2022.rda"))) {
   
   print('GrossbachPRT_2022 not processed and creating now...')
   
-  # begin assembling Grossbach protein
+  # Begin assembling Grossbach protein
   GrossbachPRT_2022 = list()
   GrossbachPRT_2022$pheno = readxl::read_excel(
     paste0(raw, "msb202110712-sup-0003-datasetev1.xlsx"),
@@ -729,14 +768,14 @@ if (!file.exists(paste0(imed, "GrossbachPRT_2022.rda"))) {
   GrossbachPRT_2022$pheno = t(GrossbachPRT_2022$pheno[,-1])
   colnames(GrossbachPRT_2022$pheno) = tempGeneNames
   
-  # initialize the residualizer object and get the Josh dedupe vector
+  # Initialize the residualizer object and get the Josh dedupe vector
   cleanerPRT = Grossbach_2022_meta[match(rownames(GrossbachPRT_2022$pheno),
                                          Grossbach_2022_meta$culture), ] %>% 
     (function(x)x[,c("culture","OD","cultureBatch","strain",
                      "MSbatch_unmod","proteinConc_BCA",
                      "LCcolumn_unmod", "MSmethod_unmod", "TIC_unmod")])
 
-  # print out strain replicate information
+  # Print out strain replicate information
   print('Number of replicated strains')
   cleanerPRT %>% filter(!strain %in% c("BY", "RM")) %>% 
     filter(duplicated(strain) | duplicated(strain, fromLast = TRUE)) %>% 
@@ -745,7 +784,7 @@ if (!file.exists(paste0(imed, "GrossbachPRT_2022.rda"))) {
   cleanerPRT %>%   filter(!strain %in% c("BY", "RM")) %>% 
     distinct(strain) %>% nrow()
   
-  # attach the other three necessary list elements
+  # Attach the other three necessary list elements
   GrossbachPRT_2022$gdata = genoG
   GrossbachPRT_2022$pclean = matrix(NA,nrow=nrow(GrossbachPRT_2022$pheno),
                                     ncol=ncol(GrossbachPRT_2022$pheno))
@@ -754,7 +793,7 @@ if (!file.exists(paste0(imed, "GrossbachPRT_2022.rda"))) {
        "LCcolumn_unmod", "MSmethod_unmod", "TIC_unmod")]
   
   
-  # IMPUTE MISSING PROTEIN VALUES
+  # Impute missing protein values
   GrossbachPRT_2022$pheno = rmIterNA(GrossbachPRT_2022$pheno, t=threshNA)
   GrossbachPRT_2022_pheno_NAs = is.na(GrossbachPRT_2022$pheno)
   print('IMPUTING MISSING PROTEIN VALUES')
@@ -775,7 +814,7 @@ if (!file.exists(paste0(imed, "GrossbachPRT_2022.rda"))) {
         GrossbachPRT_2022$pheno[j, i] = predict(
           mdl, cleanerPRT[j, attr(terms(mdl), "term.labels")])
       }, error = function(e) {
-        # if a factor cannot be estimated, drop it and impute without it
+        # If a factor cannot be estimated, drop it and impute without it
         error_factor = sub(".*factor (\\S+) has new level.*", "\\1", e$message)
         terms_list = attr(terms(mdl), "term.labels")
         terms_list = terms_list[terms_list != error_factor]
@@ -789,6 +828,7 @@ if (!file.exists(paste0(imed, "GrossbachPRT_2022.rda"))) {
     counter = counter + 1
     setTxtProgressBar(pb, counter)
   }
+  
   print(paste('There are', sum(GrossbachPRT_2022_pheno_NAs), 
               'NAs of', length(GrossbachPRT_2022_pheno_NAs), 
               'datapoints in GrossbachPRT_2022$pheno'))
@@ -798,7 +838,7 @@ if (!file.exists(paste0(imed, "GrossbachPRT_2022.rda"))) {
   print(summary(GrossbachPRT_2022$pheno[GrossbachPRT_2022_pheno_NAs]))
   rm(GrossbachPRT_2022_pheno_NAs)
   
-  # REMOVE COVARIATES FROM THE GROSSBACH PRT DATA
+  # Regress out covariates
   print('REGRESSING COVARIATES OUT OF GROSSBACH PRT DATA')
   pb = txtProgressBar(min = 0, max = ncol(GrossbachPRT_2022$pheno), style = 3)
   for (i in 1:ncol(GrossbachPRT_2022$pheno)) {
@@ -808,29 +848,26 @@ if (!file.exists(paste0(imed, "GrossbachPRT_2022.rda"))) {
            TIC_unmod + LCcolumn_unmod + MSmethod_unmod,
          data = cleanerPRT
       ))
-    
-    # Update the progress bar
     setTxtProgressBar(pb, i)
   }
   close(pb)
   
-  # deduplicate strains for the joint mapping pipeline by averaging
+  # Deduplicate strains for the joint mapping pipeline by averaging
   GrossbachPRT_2022$pclean = meanDedupe(GrossbachPRT_2022$pclean,
                                         cleanerPRT$strain) %>% scale()
   colnames(GrossbachPRT_2022$pclean) = colnames(GrossbachPRT_2022$pheno)
   
-  # ensure one-hot encoding of covariates
+  # Ensure one-hot encoding of covariates
   GrossbachPRT_2022$covars = oneHotCo(
     GrossbachPRT_2022$covars)
   
-  # deduplicate the individual phenos and corresponding covars by averaging
+  # Deduplicate the individual phenos and corresponding covars by averaging
   GrossbachPRT_2022$covars = meanDedupe(
     GrossbachPRT_2022$covars,cleanerPRT$strain)
   GrossbachPRT_2022$pheno = meanDedupe(
     GrossbachPRT_2022$pheno,cleanerPRT$strain)
   
-  
-  # remove unnecessary items, harmonize unnecessary elements, and save
+  # Remove unnecessary items, harmonize unnecessary elements, and save
   rm(cleanerPRT)
   GrossbachPRT_2022 = harmonize(GrossbachPRT_2022)
   save(GrossbachPRT_2022,file=paste0(imed,'GrossbachPRT_2022.rda'))
@@ -846,7 +883,7 @@ if (!file.exists(paste0(imed, "GrossbachPRT_2022.rda"))) {
 # GET HISTOGRAMS OF THE RAW AND CLEANED PHENOTYPES #
 ####################################################
 
-# GET THE STUDY OBJECT
+# Get the master study object
 studies = lapply(classicMetadata$study, function(x) {
   load(paste0(imed, x, '.rda'))
   get(x)
@@ -854,9 +891,23 @@ studies = lapply(classicMetadata$study, function(x) {
 names(studies) = classicMetadata$study
 
 # Plot and save histograms for raw pheno data
-phenoHister(studies, "study_histograms", asys)
+# Plot and save histograms for raw and clean phenotypes
+phenoHister(studies = studies, dir = paste0(asys,'phenotype_histograms/'), 
+            trueNames = c(
+              "Brem 2002", 
+              "Brem 2005", 
+              "Smith 2008 ethanol", 
+              "Smith 2008 glucose", 
+              "Khan 2009", 
+              "Foss 2011", 
+              "Picotti 2013", 
+              "Albert 2018 in original marker coordinates", 
+              "Albert 2018 in Grossbach 2022 marker coordinates", 
+              "Grossbach 2022 mRNA", 
+              "Grossbach 2022 protein"
+            )) 
 
-# one last pass to see what the final number of segregants by genes are
+# Final readout of segregants by genes per dataset
 lapply(studies,function(x)dim(x$pheno))
 
 #################################################################
@@ -866,14 +917,14 @@ lapply(studies,function(x)dim(x$pheno))
 # Detect the number of cores
 num_cores = detectCores()
 
-# find backgroundQTLs
+# Find backgroundQTLs
 bgQTLs = findBackgroundQTLs(studies,imed,cores=num_cores)
 
 # Map QTLs with population structure and background QTL correction
 qtlResults_full = fullMap(studies, bgQTLs, imed, method = 'f',
                           cores = num_cores)
 
-# collapse full QTLs into a nice object
+# Collapse full QTLs into a nice object
 indivFullQTLs = qtlResults_full %>%
   map_dfr(~map_dfr(.x, ~.x, .id = "chr"), .id = "study")
 save(indivFullQTLs,file=paste0(imed,'indivFullQTLs.rda'))

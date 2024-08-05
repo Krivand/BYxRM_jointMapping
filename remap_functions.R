@@ -38,9 +38,11 @@ for (pkg in pkgs) {
   if (!require(pkg, character.only = TRUE, quietly = TRUE)) {
     message("Installing ", pkg, "...")
     if (pkg %in% c("GEOquery", "GenomicRanges")) {
-      suppressMessages(BiocManager::install(pkg, lib = personal_lib_path, quietly = TRUE))
+      suppressMessages(BiocManager::install(
+        pkg, lib = personal_lib_path, quietly = TRUE))
     } else {
-      suppressMessages(install.packages(pkg, lib = personal_lib_path, quietly = TRUE))
+      suppressMessages(install.packages(
+        pkg, lib = personal_lib_path, quietly = TRUE))
     }
   } else {
     message(pkg, " is already installed.")
@@ -66,52 +68,52 @@ rm(pkgs)
 # leaps          - for which.max and others
 # lme4           - for the mixed models
 # lmerTest       - to test the outcomes of mixed models
-# parallel	 - for the mclapply function
+# parallel       - for parallelization tools (e.g. mclapply)
 # patchwork      - for the nice three-panel plots
+# pbapply        - for nice progress bars on apply functions
 # plyr           - needed for Brem 02 processing
 # progress       - for progress bars
 # readxl         - for the MS Excel files
 # rrBLUP         - to deal with population structure
-# tidyverse      - for the good good
+# tidyverse      - for the good good (data wrangling, plots, pipes, etc.)
 # viridis        - for the nicely colored plots
 
 ##################################################
 # DECIDE ON CONSTANTS AND LOAD UNIVERSAL OBJECTS #
 ##################################################
 
-# PREPARE DIRECTORIES AND SET WORKING DIRECTORY
+# Prepare directories and set the working directory
 wd = "/home/albertf/vandy147/p05/"
 raw = paste0(wd,"raw/")
 imed = paste0(wd,'imed/')
 asys = paste0(wd,'asys/')
+logs = paste0(wd,'logs/')
 setwd(wd)
 
 # Create directories if they do not exist
-if (!dir.exists(imed)) {
-  dir.create(imed)
+for (dir in c(imed,asys,logs)) {
+  if (!dir.exists(dir)) {
+    dir.create(dir)
+  }
 }
 
-if (!dir.exists(asys)) {
-  dir.create(asys)
-}
-
-# choose a random seed for the script
+# Choose a random seed for the script
 set.seed(464788913)
 
-# load the universally used metadata object
+# Load the universally used metadata object
 studyMetadata = read.delim(file=paste0(raw,'studyMetadata.csv'),
                            header=TRUE,sep=',') %>%
   as.data.frame()
 
-# create the non-bulk subset
+# Create the non-bulk subset
 classicMetadata = studyMetadata[
   studyMetadata$mapping_approach == 'QTL',]
 
-# further subset to background A in synthetic complete
+# Further subset to background A in synthetic complete
 scaMetadata = classicMetadata %>%
   dplyr::filter(medium == "SC", genetic_background == "A")
 
-# study root names
+# Study root names
 studyList = c("Brem_2002", "Brem_2005", "SmithEth_2008", "SmithGlc_2008",
               "Khan_2009", "Foss_2011", "Picotti_2013", "Albert_2018", 
               "AlbertAlt_2018", "GrossbachPRT_2022", "GrossbachRNA_2022")
@@ -120,24 +122,33 @@ studyTypes = c("mRNA","mRNA","special","special",
                "protein","protein","protein",
                "mRNA","mRNA","protein","mRNA")
 
-# threshold for NA removal
+# Threshold for NA removal
 threshNA = 0.25
 
 #########################
 # GENERAL FUNCTION BANK #
 #########################
 
-# negation of in
+# Negation of in
 `%nin%` = Negate(`%in%`)
 
-# scale without a bunch of extra data
+# Ensures a directory exists by creating it if it doesn't
+ensure_directory = function(dir) {
+  if (!dir.exists(dir)) {
+    dir.create(dir, recursive = TRUE)
+  }
+}
+
+
+# Scale without a bunch of extra data
 rawscale = function(m){
   scale(m) %>%
     {attr(., "scaled:center") <- NULL; .} %>%
     {attr(., "scaled:scale") <- NULL; .}%>%
     return()
-  }
+}
 
+# Round up CSVs into a nice R object
 roundupCSV = function(inputPath, outputPath, rName, cleanUp = FALSE){
   
   # gather CSVs and save combined object
@@ -153,13 +164,13 @@ roundupCSV = function(inputPath, outputPath, rName, cleanUp = FALSE){
   
 }
 
-# replace anything containing a specific pattern with that pattern
+# Replace anything containing a specific pattern with that pattern
 unifyPattern = function(v,p,s=F) {
   v[grepl(p, v, ignore.case = !s)] = p
   return(v)
 }
 
-# p is a vector of replacement patterns in this case
+# Where p is a vector of replacement patterns in this case
 unifyChain = function(v,p,s=F){
   for(i in p){
     v = unifyPattern(v,i,s)
@@ -167,46 +178,11 @@ unifyChain = function(v,p,s=F){
   return(v)
 }
 
-# CURRENTLY DEPRECATED?
-enumPattern = function(vec) {
-
-  # Find which elements are not unique
-  dupes = names(which(table(vec) > 1))
-  
-  # For each non-unique element, append a unique identifier suffix
-  for (dupe in dupes) {
-    # Get indices of the non-unique element
-    indices = which(vec == dupe)
-    # Create new names with unique identifier suffixes
-    vec[indices] = paste(dupe, ".r", 1:length(indices), sep = "")
-  }
-  
-  vec
-}
-
-# replaces elements of a vector in the keys of a dictionary with values
+# Replaces elements of a vector in the keys of a dictionary with values
 dictReplace = function(vec, df){
   plyr::mapvalues(vec, from = df[[1]], to = df[[2]], warn_missing = FALSE)}
 
-# randomly selects a representitives from a repeated class
-randomDedupe = function(v) {
-  
-  u = unique(v)
-  q = integer(length(u))
-  
-  for(i in seq_along(u)){
-    matching_indices = which(v == u[i])
-    if (length(matching_indices) == 1) {
-      q[i] = matching_indices
-    } else {
-      q[i] = sample(matching_indices, 1)
-    }
-  }
-  
-  return(q)
-}
-
-# averages replicates based on a key system
+# Averages replicates based on a key system
 meanDedupe = function(m, v) {
   
   u = unique(v)
@@ -224,7 +200,7 @@ meanDedupe = function(m, v) {
   return(averaged_matrix)
 }
 
-# removes rows or columns too heavy on missing values
+# Removes rows or columns too heavy on missing values
 rmHeavyNA = function(d, m, t) {
   
   if (!(t > 0 && t <= 1)) {
@@ -263,7 +239,7 @@ rmHeavyNA = function(d, m, t) {
   return(d)
 }
 
-# alternate over rows and columns until rmHeavyNA is met on both margins
+# Alternate over rows and columns until rmHeavyNA is met on both margins
 rmIterNA = function(d, t) {
   
   if (!(is.matrix(d) || is.data.frame(d))) {
@@ -282,7 +258,7 @@ rmIterNA = function(d, t) {
   
   while (keepGoing) {
     
-    # flag to break out of the loop
+    # Flag to break out of the loop
     keepGoing = FALSE
     
     # Check and remove heavy NA rows and columns
@@ -320,7 +296,7 @@ rmIterNA = function(d, t) {
   return(d)
 }
 
-# gets strain information from Brem .soft files
+# Get strain information from Brem .soft files
 getStrainInfo = function(filename) {
   
   # Read in the file line by line
@@ -337,7 +313,7 @@ getStrainInfo = function(filename) {
   return(data.frame(gsmID = gsmID, strain = strain, stringsAsFactors = FALSE))
 }
 
-# processes the SOFT files for Brem 2002 and 2005
+# Processes the SOFT files for Brem 2002 and 2005
 cleanGDS = function(dir, filename, pat, naThreshold, feats, old = F, new = F) {
   
   strainKey = getStrainInfo(paste0(dir, filename))
@@ -346,7 +322,7 @@ cleanGDS = function(dir, filename, pat, naThreshold, feats, old = F, new = F) {
     (function(x) sapply(x, function(y) sub(pat, "", y))) %>%
     unifyChain(c('BY', 'RM'))
   
-  # replace any characters if necessary 
+  # Replace any characters if necessary 
   if (is.character(old) & is.character(new)) {
     strainKey$strain = gsub(old, new, strainKey$strain)
   }
@@ -354,23 +330,24 @@ cleanGDS = function(dir, filename, pat, naThreshold, feats, old = F, new = F) {
   datGDS = GEOquery::getGEO(filename = paste0(dir, filename)) %>%
     GEOquery::Table()
   
-  # normalize using the blanks
-  datGDS[, 3:ncol(datGDS)] = apply(as.matrix(datGDS[, -c(1:2)]), 2, function(x) {
-    (x - mean(x[which(datGDS$IDENTIFIER == 'blank')], na.rm = T))
-  })
+  # Normalize using the blanks
+  datGDS[, 3:ncol(datGDS)] = apply(
+    as.matrix(datGDS[, -c(1:2)]), 2, function(x) {
+      (x - mean(x[which(datGDS$IDENTIFIER == 'blank')], na.rm = T))
+    })
   
-  # replace gene names with ORF names
+  # Replace gene names with ORF names
   datGDS$IDENTIFIER = dictReplace(
     datGDS$IDENTIFIER, feats[c('Standard_Gene_Name', 'Feature_Name')]
   )
   
-  # get rid of any identifiers not associated with ORFs
+  # Get rid of any identifiers not associated with ORFs
   datGDS = datGDS[datGDS$IDENTIFIER %in% feats$Feature_Name,]
   
-  # remove rows with too many NAs
+  # Remove rows with too many NAs
   datGDS = rmIterNA(datGDS, naThreshold)
   
-  # merge duplicates by average and then impute missing data by averages
+  # Merge duplicates by average and then impute missing data by averages
   dKey = datGDS$IDENTIFIER
   theNAs = is.na(datGDS[,-c(1:2)])
   print(paste('There are',sum(theNAs),'NAs of',length(theNAs),'datapoints'))
@@ -380,21 +357,21 @@ cleanGDS = function(dir, filename, pat, naThreshold, feats, old = F, new = F) {
   print('Summary of imputed values')
   print(summary(datGDS[theNAs]))
   
-  # remove gene duplicates by averaging relevant values
+  # Remove gene duplicates by averaging relevant values
   datGDS = meanDedupe(datGDS, dKey)
   
-  # ensure strainKey is in order andremove strain duplicates by averaging 
+  # Ensure strainKey is in order andremove strain duplicates by averaging 
   common_elements = intersect(strainKey$gsmID, colnames(datGDS))
   strainKey = strainKey[strainKey$gsmID %in% common_elements, ]
   strainKey = strainKey[match(colnames(datGDS), strainKey$gsmID), ]
   datGDS = meanDedupe(t(datGDS),strainKey$strain)
   
-  # return the numeric elements as a transposed matrix
+  # Return the numeric elements as a transposed matrix
   return(datGDS)
   
 }
 
-# merges two matrices
+# Merges the two dye-swap matrices
 dyeMerge = function(m, n) {
   
   # Check if both m and n are matrices
@@ -436,15 +413,17 @@ dyeMerge = function(m, n) {
 
 # Scans for NA runs and figures out what the distribution of NA runs is
 row_NA_scan = function(geno, meta) {
-  # get the number of rows that may contain NA runs
+  
+  # Get the number of rows that may contain NA runs
   num_rows = nrow(geno)
-  # holds NA chain lengths for rows
+  
+  # Holds NA chain lengths for rows
   na_chain_lengths = vector("list", num_rows)
   
+  # Check each row of NAs
   for (row in 1:num_rows) {
-    # Initialize the NA chain length for the row
+    # Initialize the NA chain length for the row and walk
     chain_length = 0  
-    
     for (col in 1:ncol(geno)) {
       if (is.na(geno[row, col])) {
         # Increment the chain length if the value is NA
@@ -473,9 +452,9 @@ row_NA_scan = function(geno, meta) {
   return(na_chain_lengths)
 }
 
-# simple end matching genome imputation
+# Simple end-matching genome imputation by average
 impute_geno = function(geno, meta) {
-
+  
   for (i in 1:nrow(geno)) {
     # Get the indices of NA values in the current row
     na_indices = which(is.na(geno[i,]))
@@ -502,6 +481,7 @@ impute_geno = function(geno, meta) {
         
         # Iterate over inner NA indices and apply the new imputation approach
         for (j in inner_nas) {
+          
           # Search leftwards for a non-NA value with absolute value of 1
           left_value = NA
           k = j - 1
@@ -518,8 +498,8 @@ impute_geno = function(geno, meta) {
             k = k + 1
           }
           
-          # Assign 0 if left and right values are different, 
-          # else assign the matching value
+          # Assign 0 if left and right values are different,
+          # Else assign the matching value
           geno[i, j] = ifelse(left_value != right_value, 0, left_value)
         }
       }
@@ -530,7 +510,7 @@ impute_geno = function(geno, meta) {
   return(geno)
 }
 
-# replaces NA values with row or column averages
+# Replaces NA values with row or column averages
 averageNA = function(m, g = 1) {
   
   # Check if input is a numeric matrix or dataframe
@@ -587,62 +567,10 @@ averageNA = function(m, g = 1) {
   return(m)
 }
 
-# plots histograms of the raw and clean datasets
-phenoHister = function(studies, file_name, asys) {
-  raw_plots = list()
-  cleaned_plots = list()
-  
-  for (study_name in names(studies)) {
-    study = studies[[study_name]]
-    
-    df_pheno = data.frame(mean_values = colMeans(study$pheno))
-    p_pheno = ggplot(df_pheno, aes(x = mean_values)) +
-      geom_histogram(fill = "blue", color = "black") +
-      labs(title = paste("Raw", study_name), x = "Mean", y = "Frequency") +
-      theme_minimal()
-    raw_plots[[length(raw_plots) + 1]] = p_pheno
-    
-    df_pclean = data.frame(mean_values = colMeans(study$pclean))
-    p_pclean = ggplot(df_pclean, aes(x = mean_values)) +
-      geom_histogram(fill = "blue", color = "black") +
-      labs(title = paste("Cleaned", study_name), x = "Mean", y = "Frequency") +
-      theme_minimal()
-    cleaned_plots[[length(cleaned_plots) + 1]] = p_pclean
-  }
-  
-  # Arrange plots: all raw plots on the left, all cleaned plots on the right
-  plots = c(raw_plots, cleaned_plots)
-  
-  # Calculate number of rows for the grid
-  nCol = 2
-  nRow = length(studies)
-  
-  # Arrange plots and save to file
-  g = marrangeGrob(plots, nrow = nRow, ncol = nCol, top = NULL)
-  full_path = file.path(asys, paste0(file_name, ".png"))
-  ggsave(filename = full_path, plot = g, width = 16, height = 9 * nRow, limitsize = FALSE)
-}
-
-# splits one of Josh's lists into three parts
-split_marker = function(marker) {
-  # Split by colon and underscore
-  parts = str_split(marker, "[:_]", simplify = TRUE)
-  
-  # Extract components
-  chromosome = parts[, 1]
-  index = parts[, 2]
-  substitution = parts[, 3]
-  
-  # Return a list of components
-  list(chromosome = chromosome, 
-       index = as.numeric(index), 
-       substitution = substitution)
-}
-
-# turns a list of markers in Josh's format to granges
-# can handle if there is variant underscore separation or not
+# Turns a list of markers in Josh's format to granges
+# Tan handle if there is variant underscore separation or not
 markRanger = function(v) {
-
+  
   # store the original names (Josh's format)
   original_names = v
   
@@ -663,6 +591,7 @@ markRanger = function(v) {
     mutate(end = start, across(c("start", "end"), as.integer)) %>%
     makeGRangesFromDataFrame(keep.extra.columns=TRUE) %>%
     { .@elementMetadata$josh = original_names; . }
+  
 }
 
 # Function to transform GRanges back to Josh's format
@@ -674,58 +603,19 @@ grToJosh = function(gr){
     pull(marker)
 }
 
-# wrapper for the pairwise intersection from genomic ranges
-# allows for the quick addition of padding on the first grange
-# e.g. bigger flanks to reduce stringency
+# Wrapper for the pairwise intersection from genomic ranges
+# Allows for the quick addition of padding on the first grange
+# E.g. bigger flanks to reduce stringency
+# Add padding to gr1, pairwise intersect, and return
 padded_pintersect = function(gr1, gr2, pad=0) {
-  
-  # Add padding to gr1
   gr1_padded = resize(gr1, width(gr1) + 2 * pad, fix = "center")
-  
-  # Perform pairwise intersection with padded gr1
   intersections = pintersect(gr1_padded, gr2)
-  
   return(intersections)
 }
 
-# (CURRENTLY NOT IN USE) changes from peaks format to genomic range
-peakRanger = function(m){
-  
-  k = paste0('chr',as.roman(1:16))
-  n = sapply(m[,1],function(x)strsplit(x,"[:_]+")) %>% 
-    (function(x)do.call(rbind,x)) %>% as.data.frame()
-  n[,1] = sapply(n[,1],function(x)as.numeric(which(k == x)))
-  n[,3] = sapply(m[,2],function(x)strsplit(x,"[:_]+")) %>% 
-    (function(x)do.call(rbind,x)) %>% (function(x)x[,2]) %>% as.numeric()
-  colnames(n) = c('chr','start','end')
-  n$orf = m[,3]
-  n$r = m[,4]
-  n = n[order(n$orf,n$chr,n$start),]
-  return(makeGRangesFromDataFrame(n,keep.extra.columns = T))
-  
-}
-
-# orders a matrix by its row names
-rowOrd = function(m){
-  return(m[order(rownames(m)), ])
-}
-
-# converts from R,B and other symbols to -1,1, and NA
-rb2one = function(x){
-  if(x == 'R'){1}else if(x =='B'){-1}else{NA}
-}
-
-# switches names from underscore format to Josh format
-formatMarks = function(v){
-  sapply(v,function(x)strsplit(x,'_')) %>%
-    (function(x)
-      sapply(x,function(y)paste0('chr',as.roman(y[1]),':',y[2])))
-  
-}
-
-# harmonizes matrix elements of a list by segregant representation
+# Harmonizes matrix elements of a list by segregant representation
 harmonize = function(matList) {
-
+  
   # Check if required items are in matList
   required_items = c("pheno", "gdata", "pclean", "covars")
   if (!all(required_items %in% names(matList))) {
@@ -771,11 +661,15 @@ harmonize = function(matList) {
   return(matList)
 }
 
+# Create a one-hot encoding for any colummns that are factors or characters
 oneHotCo = function(covars) {
+  
   # Identify columns that are either factors or characters
-  categorical_columns = sapply(covars, function(x) is.factor(x) || is.character(x))
+  categorical_columns = sapply(covars, function(x)
+    is.factor(x) || is.character(x))
   covars_encoded = covars
   
+  # Encode
   for (col_name in names(covars)[categorical_columns]) {
     covar_factor = as.factor(covars[[col_name]])
     dummy_vars = model.matrix(~ covar_factor - 1)
@@ -784,16 +678,19 @@ oneHotCo = function(covars) {
     covars_encoded[[col_name]] = NULL
   }
   
-  # Convert to matrix
+  # Convert to matrix and return
   covars_encoded = as.matrix(covars_encoded)
-  
   return(covars_encoded)
 }
 
-# QTL mapping dependency (J. Bloom)
+###############################################
+# INDIVIDUAL MAPPING LEGACY CODE (JOSH BLOOM) #
+###############################################
+
+# QTL mapping dependency
 calc.BLUPS= function(G,Z,Vinv,y,X,B){G%*%crossprod(Z,Vinv)%*%(y-X%*%B)}
 
-# QTL mapping dependency (J. Bloom)
+# QTL mapping dependency
 doEigenA_forMM=function(pheno.scaled,A ,X=NULL ) {
   n=nrow(pheno.scaled)
   if(is.null(X) ) {  X = matrix(rep(1, n), n, 1); p=1} else {p=ncol(X)}
@@ -807,15 +704,15 @@ doEigenA_forMM=function(pheno.scaled,A ,X=NULL ) {
   return(list(theta=theta, Q=Q))
 }
 
-# QTL mapping dependency (J. Bloom)
-# borrowed and modified from from mixed.solve() in rrBLUP 08/02/15
-# super optimized for one VC and fixed effects 
-# ~1000X speedup by precomputing eigen decomp
+# QTL mapping dependency
+# Borrowed and modified from from mixed.solve() in rrBLUP 08/02/15
+# Super optimized for one VC and fixed effects 
+# Roughly 1000X speedup by precomputing eigen decomp
 m.S=function (y, K = NULL, bounds = c(1e-09, 1e+09),theta=NULL,Q=NULL,X=NULL) 
 {
   n = length(y)
   y = matrix(y, n, 1)
-  if(is.null(X) ) {  p = 1    } else { p = ncol(X) }
+  if(is.null(X)) {p = 1} else {p = ncol(X)}
   Z = diag(n)
   m = ncol(Z)
   
@@ -835,9 +732,9 @@ m.S=function (y, K = NULL, bounds = c(1e-09, 1e+09),theta=NULL,Q=NULL,X=NULL)
   return(VCs)
 }
 
-# Faster LOD calculation (J. Bloom)
-# no NA handling but very fast
-# input is scaled phenotypes and genotypes
+# Faster LOD calculation
+# No NA handling but very fast
+# Input is scaled phenotypes and genotypes
 fasterLOD = function(n.pheno, pheno.s,gdata.s, betas=FALSE, sdx=1, pheno=NULL){
   r=crossprod(pheno.s, gdata.s)/(n.pheno-1)
   LOD=(-n.pheno*log(1-r^2))/(2*log(10))
@@ -848,37 +745,36 @@ fasterLOD = function(n.pheno, pheno.s,gdata.s, betas=FALSE, sdx=1, pheno=NULL){
   }
 }
 
-# Finds background QTLs (J. Bloom)
+# Finds background QTLs
 # covariates is numeric and segregant by number of covariates
 # phenotype.raw is numeric with dim: segregants x number of traits 
 # phenotype.scaled will be the same type as phenotype.raw
 # gdata is numeric with dim: segregants x number of markers
-  # the gdata colnames must be in a special format
-  # chr:position e.g. chrXIII:591795 for the bp position on ChrXIII 
+# the gdata colnames must be in a special format
+# chr:position e.g. chrXIII:591795 for the bp position on ChrXIII 
 # gdata.scaled is just a scaled version of gdata
 # bcl.thresh is a numeric LOD cutoff
 # chromosomes is a vector of strings 
-  # these should be present in the gdata names
-  # lets you specify those other than the typical 16 in S. cerevisiae
+# these should be present in the gdata names
+# lets you specify those other than the typical 16 in S. cerevisiae
 # OUTPUT: a list of length equal to the number of chromosomes
-  # each element (e.g. ChrI) contains a list of genes
-  # genes have markers from OTHER chromosomes that influence them
-  # this is used to remove genetic influence coming from other chromosomes
-  # if you were scanning ChrI you would remove QTLs from ChrII through ChrXVI
-
+# each element (e.g. ChrI) contains a list of genes
+# genes have markers from OTHER chromosomes that influence them
+# this is used to remove genetic influence coming from other chromosomes
+# if you were scanning ChrI you would remove QTLs from ChrII through ChrXVI
 find.background.QTL = function(covariates, phenotype.raw, pheno.scaled, gdata,
                                gdata.scaled, bck.thresh=3.5, chromosomes=NULL){
   
-  # if no chromosome is provided, default to the 16 yeast chromosomes
+  # If no chromosome is provided, default to the 16 yeast chromosomes
   if(is.null(chromosomes)) { chromosomes=paste0('chr', as.roman(1:16)) } 
   
-  # this vector tells you which chromosome each marker belongs to
+  # This vector tells you which chromosome each marker belongs to
   cvec=(do.call('rbind', strsplit(colnames(gdata), ':'))[,1])
   
-  # ITERATION 1  (find background QTL effects)
+  # Iteration 1  (find background QTL effects)
   LODS=fasterLOD(nrow(pheno.scaled),pheno.scaled,gdata.scaled)
   
-  # lists to hold LODs, markers, and scaled markers by chromosome
+  # Lists to hold LODs, markers, and scaled markers by chromosome
   LODS.by.chr=list()
   gdata.s.by.chr=list()
   gdata.by.chr=list()
@@ -888,25 +784,23 @@ find.background.QTL = function(covariates, phenotype.raw, pheno.scaled, gdata,
     gdata.by.chr[[cc]]=gdata[,which(cvec %in% cc)]   
   }
   
-  # max LOD per chromosome
+  # Max LOD per chromosome and then indices for them
   max.lod.chr=lapply(LODS.by.chr, function(x) { apply(x,1,max) })
-  
-  # index of max LOD per chromosome
   max.lod.chr.ind=lapply(LODS.by.chr, function(x) { apply(x,1,which.max) })
   
-  # pulls out the marker index (by chromosome) of the peak marker 
+  # Pulls out the marker index (by chromosome) of the peak marker 
   pmarker.chr.ind =  mapply(function(x,y,z) {
     
-    # index gets included if LOD exceeds background threshold
+    # Index gets included if LOD exceeds background threshold
     h=y[x>bck.thresh]
     
     # Retrieve marker names using indices from h; i holds the actual names of 
-      # the markers at indices where LOD scores are significant.
+    # The markers at indices where LOD scores are significant.
     i=colnames(z)[h]
     
     # Assign names to i using the original indices in h. This step links each
-      # marker name with its corresponding LOD score index to trace it
-      # makes clear which LOD scores each marker name corresponds to.
+    # Marker name with its corresponding LOD score index to trace it
+    # Makes clear which LOD scores each marker name corresponds to.
     names(i)=names(h)
     
     return(i)
@@ -924,15 +818,15 @@ find.background.QTL = function(covariates, phenotype.raw, pheno.scaled, gdata,
   # Adjust phenotypes for identified background QTL effects, iteration 1
   plist=lapply(colnames(phenotype.raw), function(i) {
     
-    # if the gene not present in the QTL list return unchanged 
+    # If the gene not present in the QTL list return unchanged 
     if(!(i %in% names(pbg)) ) {return(pheno.scaled[,i]) } 
     
-    # if gene present remove effect of gdata
+    # If gene present remove effect of gdata
     else{ residuals(lm(phenotype.raw[,i]~covariates+gdata[,pbg[[i]]]) )  }
   })
   
   # Combine residuals of all traits into a single matrix 
-  # this matrix has the same dimensions as pheno.scaled
+  # This matrix has the same dimensions as pheno.scaled
   p.resid1=do.call('cbind', plist)
   
   # Assign original phenotype names to the columns of the residuals matrix
@@ -941,7 +835,7 @@ find.background.QTL = function(covariates, phenotype.raw, pheno.scaled, gdata,
   # Normalize residuals to have zero mean and unit variance for further analysis
   pheno.scaled=scale(p.resid1)
   
-  # ITERATION 2 (find background QTL effects)
+  # Iteration 2 (find background QTL effects)
   LODS1=fasterLOD(nrow(pheno.scaled),pheno.scaled,gdata.scaled)
   LODS1.by.chr=list()
   for(cc in chromosomes) { LODS1.by.chr[[cc]]=LODS1[,which(cvec %in% cc)]}
@@ -962,7 +856,7 @@ find.background.QTL = function(covariates, phenotype.raw, pheno.scaled, gdata,
   pbg.merge=pbg
   for(i in names(pbg1)){pbg.merge[[i]]=c(pbg.merge[[i]], pbg1[[i]])}
   
-  # ITERATION 3 (find background QTL effects)
+  # Iteration 3 (find background QTL effects)
   plist=lapply(colnames(phenotype.raw),function(i) { 
     if(!(i %in% names(pbg.merge)) ) {  return(pheno.scaled[,i])} 
     else{ residuals(lm(phenotype.raw[,i]~covariates+gdata[,pbg.merge[[i]]]))}
@@ -999,29 +893,30 @@ find.background.QTL = function(covariates, phenotype.raw, pheno.scaled, gdata,
                                pm.chr.ind.df$gene[pm.chr.ind.df$chr!=cc]) 
   }
   return(background.QTL)
+  
 }
 
-# maps QTLs (Josh Bloom)
-# covariates is a matrix of the covaraites
-# background QTLs are 
+# Maps QTLs optional background QTL and GRM corrections
+# Covariates is a matrix of the covaraites
+# Background QTLs are an input for background QTL correction
 # phenotype.raw is an unsacaled phenotypes matrix (segregant x trait)
-  # elements are numeric measures
-# pheno.scaled is the scaled pheno matrix
+# Elements are numeric measures
+# Note pheno.scaled is the scaled pheno matrix
 # gdata is an unscaled genotypes matrix (segregant x marker)
-  # elements are typically binary -1 or 1 coded genotypes but can be numeric
+# Elements are typically binary -1 or 1 coded genotypes but can be numeric
 # gdata.scaled is the scaled genotypes matrix
 mapQTL=function(covariates, background.QTL, phenotype.raw, pheno.scaled, 
                 gdata, gdata.scaled, 
                 chromosomes=NULL,
                 n.perm=1000, FDR.thresh=.05, Arandom=TRUE) {
   
-  # if no chromosome is provided, default to the 16 yeast chromosomes
+  # If no chromosome is provided, default to the 16 yeast chromosomes
   if(is.null(chromosomes)) { chromosomes=paste0('chr', as.roman(1:16)) } 
   
-  # this vector tells you which chromosome each marker belongs to
+  # This vector tells you which chromosome each marker belongs to
   cvec=(do.call('rbind', strsplit(colnames(gdata), ':'))[,1])
   
-  # get gdata and scaled gdata by chromosome
+  # Get gdata and scaled gdata by chromosome
   gdata.s.by.chr=list()
   gdata.by.chr=list()
   for(cc in chromosomes) {   
@@ -1029,42 +924,42 @@ mapQTL=function(covariates, background.QTL, phenotype.raw, pheno.scaled,
     gdata.by.chr[[cc]]=gdata[,which(cvec %in% cc)]   
   }
   
-  # initialize peak holding list
+  # Initialize peak holding list
   peakList=list()
   
-  # iterate over the chromosomes in the phenotype matrix
+  # Iterate over the chromosomes in the phenotype matrix
   for(cc in chromosomes) {  
     
-    # tell us what chromosome we are on
+    # Tell us what chromosome we are on
     print(cc) 
     
-    # iterate over the genes in the phenotype matrix
+    # Iterate over the genes in the phenotype matrix
     plist=lapply(colnames(phenotype.raw),function(i){ 
       
-      # if there is no QTL for that gene
+      # If there is no QTL for that gene
       if(!(i %in% names(background.QTL[[cc]]))){
         
-        # then return only the covariate correction
+        # Then return only the covariate correction
         return(residuals(lm(phenotype.raw[,i]~covariates)))}
       
       else{
         
-        # else return correction after 
+        # Else return correction after 
         residuals(lm(
           phenotype.raw[,i]~covariates+gdata[,background.QTL[[cc]][[i]]]))}
     })
     
     # preal will be the same size as the phenotype matrix
-    # it combines the residual slices
+    # preal combines the residual slices
     preal=do.call('cbind', plist)
     
-    # colnames for preal are lifted directly from the phenotype matrix
+    # Colnames for preal are lifted directly from the phenotype matrix
     colnames(preal)=colnames(phenotype.raw)
     
-    # the presid close is made of preal
+    # presid is made of preal
     presid = preal
     
-    # remove residual additive effect
+    # Remove residual additive effect of genetics
     if(Arandom) {
       Aloco=rrBLUP::A.mat(
         do.call('cbind',(gdata.by.chr[-match(cc, names(gdata.by.chr))])))/2
@@ -1092,27 +987,27 @@ mapQTL=function(covariates, background.QTL, phenotype.raw, pheno.scaled,
     obsLOD = fasterLOD(nrow(preal),
                        presid,gdata.s.by.chr[[cc]],betas=TRUE,pheno=preal)
     
-    # this flag forms the basis of a while loop
+    # This flag forms the basis of a while loop
     findingPeaks=TRUE
     jump=1
     
-    # while we remain in peakfinding mode we scan
+    # While we remain in peakfinding mode we scan
     while(findingPeaks==TRUE) {
       
-      # we find the maximum LODs
+      # We find the maximum LODs
       max.obsLOD=apply(obsLOD$LOD,1,max)
       
-      # we retrieve the indices (ind) for the maximum LODs
+      # We retrieve the indices (ind) for the maximum LODs
       max.ind.obsLOD=apply(obsLOD$LOD,1,which.max)   
       
-      # we prepare the LOD permutation matrix
+      # We prepare the LOD permutation matrix
       permLOD=matrix(0, length(max.obsLOD), n.perm)
       
-      # announce permutations and start progress bar
+      # Announce permutations and start progress bar
       print('doing permutations')
       pb = txtProgressBar(min = 1, max =n.perm, style = 3)
       
-      # loop for the number of permutations
+      # Loop for the number of permutations
       for(i in 1:n.perm) {
         setTxtProgressBar(pb, i)
         permLOD[,i]=apply(fasterLOD(nrow(presid),presid[sample(nrow(presid)),],
@@ -1120,16 +1015,16 @@ mapQTL=function(covariates, background.QTL, phenotype.raw, pheno.scaled,
       }
       close(pb)
       
-      # check how many are above the iterated LOD threshold
+      # Check how many are above the iterated LOD threshold
       obsPcnt = sapply(seq(1.5,9,.05),
                        function(thresh){sum(max.obsLOD>thresh)})
       names(obsPcnt) = seq(1.5, 9, .05)
       
-      # if there are no more than 2 QTLs discovered, break the loop
-      # we need to discover at least three to say that it's real
+      # If there are no more than 2 QTLs discovered, break the loop
+      # We need to discover at least three to say that it's real
       if(sum(obsPcnt)<3) {break}
       
-      # take the means of the permuted LODs to get the expected number of FDs
+      # Take the means of the permuted LODs to get the expected number of FDs
       expPcnt = sapply(seq(1.5, 9, .05),  
                        function(thresh) { 
                          mean(apply(permLOD,2,function(ll){sum(ll>thresh)}))
@@ -1139,20 +1034,20 @@ mapQTL=function(covariates, background.QTL, phenotype.raw, pheno.scaled,
       # FDR is then just the expected percents divided by the observed
       pFDR = expPcnt/obsPcnt
       
-      # any numerical weirdness due to div by 0 or missingness is zeroed here
+      # Any numerical weirdness due to div by 0 or missingness is zeroed here
       pFDR[is.na(pFDR)]=0
       pFDR[!is.finite(pFDR)]=0
       
-      # ensure monotonicity in FDR curve by cumulative max on double reverse
+      # Ensure monotonicity in FDR curve by cumulative max on double reverse
       pFDR = rev(cummax(rev(pFDR)))
       
-      # linear interpolation of function
+      # Linear interpolation of function
       fdrFX=approxfun(pFDR, seq(1.5,9,.05))
       thresh=fdrFX(FDR.thresh)
       print(paste('FDR Thresh 5%', thresh)) 
       peak.gene.ind=max.ind.obsLOD[which(max.obsLOD>thresh)]
       
-      # continue 
+      # Continue 
       if(length(peak.gene.ind)>0) { 
         findingPeaks=TRUE 
         pldf=data.frame(gene=names(peak.gene.ind),
@@ -1188,20 +1083,20 @@ mapQTL=function(covariates, background.QTL, phenotype.raw, pheno.scaled,
                            gdata.s.by.chr[[cc]],betas=TRUE, pheno=presid.tmp)
         presid=presid.tmp
         jump=jump+1 
-      } else {findingPeaks=FALSE} # set peakfinding to false if we find none
+      } else {findingPeaks=FALSE} # stop peakfinding if we find none
     }
   }
   return(peakList)
 }
 
 # LOD from n and R
-# inputs: sample size (n) and correlation coefficient (r)
-# outputs: LOD score
+# Inputs: sample size (n) and correlation coefficient (r)
+# Outputs: LOD score
 nrLOD = function(n, r){
   return(-n*log(1-r^2))/(2*log(10))
 }
 
-# wrapper for getting background QTLs
+# Wrapper for getting background QTLs
 findBackgroundQTLs = function(studies, fn, cores = 1) {
   bgQTLs = mclapply(names(studies), function(study_name) {
     study = studies[[study_name]]
@@ -1230,12 +1125,12 @@ findBackgroundQTLs = function(studies, fn, cores = 1) {
   return(bgQTLs)
 }
 
-# wrapper for mapping QTLs using Josh's pipeline over a list
+# Wrapper for mapping QTLs using Josh's pipeline over a list
 fullMap = function(studies, bgQTLs, fn, method = 'f', cores = 1) {
   
   # EXPLANATION OF MAPPING TYPES
-  # full map (f): includes empirical null, pop struc crxn, background crxn
-  # simple map (s): includes empirical null
+  # Full map (f): includes empirical null, pop struc crxn, background crxn
+  # Simple map (s): includes empirical null
   
   # Alter mapping type based on method
   if (method == 'f') {
@@ -1256,12 +1151,14 @@ fullMap = function(studies, bgQTLs, fn, method = 'f', cores = 1) {
     
     # Check if results file exists
     if (file.exists(paste0(fn, study_name, typeRoot, '.rda'))) {
-      print(paste0('Files already exist for ', study_name, ' using method ', method))
+      print(paste0('Files already exist for ', study_name,
+                   ' using method ', method))
       print('Loading files now...')
       load(paste0(fn, study_name, typeRoot, '.rda'))
       qtlResult = get(paste0(study_name, typeRoot))
     } else {
-      print(paste0('Attempting to map QTLs for ', study_name, ' using method ', method))
+      print(paste0('Attempting to map QTLs for ', study_name,
+                   ' using method ', method))
       
       # Scan for QTLs
       print("SCANNING FOR QTLS")
@@ -1284,88 +1181,6 @@ fullMap = function(studies, bgQTLs, fn, method = 'f', cores = 1) {
   # Assign names to results and return
   names(qtlResults) = names(studies)
   return(qtlResults)
-}
-
-# transforms peaks into a format usable by Matthew's code
-easyTableQTL = function(peaks, ivals) {
-  # First, we separate the chromosome and coordinate from pmarker, CI.l and CI.r
-  peaks = peaks %>%
-    separate(CI.l, into = c("chr", "CI.l"), sep = ":", convert = TRUE) %>%
-    separate(CI.r, into = c("CI.r_chr", "CI.r"), sep = ":", remove = FALSE) %>%
-    select(-CI.r_chr,-pcind) %>% mutate(CI.r = as.numeric(CI.r))
-  
-  # Now, we lookup the 'end' for CI.r_coord in the ivals table
-  peaks = peaks %>%
-    left_join(ivals, by = c("chr" = "chr", "CI.r" = "start")) %>%
-    mutate(pmarker = round((CI.l + CI.r) / 2))
-  
-  # Format the output as desired
-  peaks = peaks %>%
-    select(gene, chr, pmarker, r, CI.l, CI.r,LOD)
-  
-  return(peaks)
-}
-
-# takes a nice table and creates a genomic range out of it
-qtlTableToRange = function(df) {
-  
-  gr_df = df %>% 
-    dplyr::rename(seqnames = chr, start = CI.l, end = CI.r) %>%
-    dplyr::mutate(start = as.integer(start),
-                  end = as.integer(end),
-                  gene = as.character(gene),
-                  pmarker = as.integer(pmarker),
-                  r = as.numeric(r)) %>%
-    dplyr::select(seqnames, start, end, gene, pmarker, r, LOD)
-  
-  gr = makeGRangesFromDataFrame(gr_df, keep.extra.columns = TRUE)
-  
-  return(gr)
-}
-
-# creates a simple gRange with gene name and marker metadata
-geneRanger = function(df) {
-  
-  gr_df = df %>% 
-    dplyr::rename(seqnames = chr, start = CI.l, end = CI.r) %>%
-    dplyr::mutate(start = as.integer(start),
-                  end = as.integer(end),
-                  gene = as.character(gene),
-                  pmarker = as.integer(pmarker)) %>%
-    dplyr::select(seqnames, start, end, gene, pmarker)
-  
-  gr = makeGRangesFromDataFrame(gr_df, keep.extra.columns = TRUE)
-  
-  return(gr)
-}
-
-# compares a metadata measure between 'same' QTLs of two QTL granges
-compr = function(old,new){
-  
-  # figure out which items are the same
-  q = GenomicRanges::findOverlaps(old,new)
-  k = old$gene[S4Vectors::queryHits(q)] == new$gene[S4Vectors::subjectHits(q)]
-  return(q[k])
-  
-}
-
-# extracts columns based on a overlap key
-olapExtract = function(key,old,new,oCols,oNames,nCols,nNames){
-  
-  old = old[queryHits(key),oCols]
-  new = new[subjectHits(key),nCols]
-  colnames(old) = oNames
-  colnames(new) = nNames
-  return(cbind(old, new))
-  
-}
-
-# wrapped for quick scatterplot creation
-scatterer = function(df, colA, colB, title) {
-  ggplot(df, aes(x = !!sym(colA), y = !!sym(colB))) +
-    geom_point(alpha = 0.2, pch = 19) +
-    theme_minimal() +
-    labs(title = title, x = colA, y = colB)
 }
 
 ############################
@@ -1405,7 +1220,8 @@ collapseBgQTLs = function(bgQTLs, chroms = NULL) {
           if (!chr %in% names(combinedQTLs[[gene]])) {
             combinedQTLs[[gene]][[chr]] = markers
           } else {
-            combinedQTLs[[gene]][[chr]] = unique(c(combinedQTLs[[gene]][[chr]], markers))
+            combinedQTLs[[gene]][[chr]] = unique(c(
+              combinedQTLs[[gene]][[chr]], markers))
           }
         }
       }
@@ -1415,7 +1231,7 @@ collapseBgQTLs = function(bgQTLs, chroms = NULL) {
   return(combinedQTLs)
 }
 
-# check which genes are represented in two mRNA and two protein datasets
+# Check which genes are represented in two mRNA and two protein datasets
 suppTwo = function(studyMetadata, type = "analyte") {
   
   if (type == "analyte") {
@@ -1446,7 +1262,7 @@ suppTwo = function(studyMetadata, type = "analyte") {
   return(common_genes)
 }
 
-# STUDY-STRATIFIED PERMUTATIONS
+# Do statified permutations (e.g. for study)
 # takes as argument the group boundaries and number of perms to request
 # critical for the functionality of the jointMarkerTest
 stratPerm = function(v, n) {
@@ -1466,7 +1282,6 @@ stratPerm = function(v, n) {
   return(perm_matrix)
 }
 
-# CORRECT FOR PREVIOUSLY DISCOVERED BACKGROUND QTLS
 # Function to adjust jointPhenoScaled for background QTLs
 adjust_for_background_QTLs = function(
     geno_matrix, pheno_matrix, bgQTLs, chromosomes) {
@@ -1485,7 +1300,6 @@ adjust_for_background_QTLs = function(
   return(adjusted_pheno)
 }
 
-# CORRECT FOR GENETIC RELATEDNESS ACROSS SEGREGANTS
 # Function to calculate BLUPs and correct relatedness out of phenotype
 # NOTE: breaks when same segregant is in there multiple times (100% related)
 calculate_BLUPs = function(geno_matrix, pheno_matrix) {
@@ -1507,25 +1321,25 @@ calculate_BLUPs = function(geno_matrix, pheno_matrix) {
   return(adjusted_residuals)
 }
 
-# MAP ASSOCIATION BETWEEN SPECIFIC MARKERS AND EXPRESSION JOINLY ACROSS DATASETS
-# studies are the study objects used for indivudal mapping
+# Map association between markers and expression jointly across datasets
+# Studies are the study objects used for indivudal mapping
 # targetMarkers are the markers you are testing associations on
-# these contain important information such as genotype and phenotype matrices
 # bgQTLs are background QTLs mapped for each dataset
 # smetadata is study metada (e.g. the analyte and the name of the study)
-# the column gene is actually a list of pointers to vectors containing...
-# the names of the genes which are quantified in that study
+# The column gene is actually a list of pointers to vectors containing...
+# The names of the genes which are quantified in that study
 # supp are the genes supported by this specific analyses
 # nPerm is the number of permutations to perform
 # FDR is the false discovery rate threshold
-# we are interested in finding QTLs of two flavors
-# genotype (geno) and genotype-analyte interaction (ixn)
-# mapping allows either winners via an "effect-size" or a "-log10(p)" hit
-# function return includes columns for effect-size and -log10(p) hits...
-  # these are negative if a QTL does not pass one or the other
-  # so none of the reported and returned QTLs can be negative in both
-  # if no QTL passes one of the measurement criteria...
-    # the negative value returned is the most stringent FDR cutoff tested
+# We are interested in finding QTLs of two flavors
+# Genotype (geno) and genotype-analyte interaction (ixn)
+# Mapping allows either winners via an "effect-size" or a "-log10(p)" hit
+# Function return includes columns for effect-size and -log10(p) hits...
+# These are negative if a QTL does not pass one or the other
+# So none of the reported and returned QTLs can be negative in both
+# If no QTL passes one of the measurement criteria...
+# The negative value returned is the most stringent FDR cutoff tested
+# Bit of a vile memory hog that I did not optimize for memory-usage
 jointMarkerTest = function(studies,targetMarkers,unionBg,smetadata,suppGenes,
                            nPerms,FDR,fn,correctBG=FALSE,correctGRM=FALSE,
                            cores=1,chromosomes=NULL){
@@ -1538,20 +1352,20 @@ jointMarkerTest = function(studies,targetMarkers,unionBg,smetadata,suppGenes,
     dir.create(outPath, showWarnings = TRUE, recursive = FALSE)
   }
   
-  # get true marker names
+  # Get true marker names
   trueMarkers = colnames(studies[[1]]$gdata)
   
   # Define default 16 S. cervisiae chromosomes if none are provided
   if (is.null(chromosomes)) {chromosomes = paste0("chr",as.roman(1:16))}
   
-  # get a list of which studies support every gene
+  # Get a list of which studies support every gene
   suppList = lapply(suppGenes, function(gene) {
     studies_containing_gene = sapply(smetadata$genes,function(gene_list){
       gene %in% gene_list})
     smetadata$study[studies_containing_gene]
   }) %>% `names<-`(suppGenes)
   
-  # create per-gene metadata object (gene-long list with segregants as rows)
+  # Create per-gene metadata object (gene-long list with segregants as rows)
   longMeta = mapply(function(x, y) {
     rep(y, nrow(x$gdata))
   }, studies, names(studies)) %>%
@@ -1562,24 +1376,24 @@ jointMarkerTest = function(studies,targetMarkers,unionBg,smetadata,suppGenes,
     left_join(smetadata %>% select(study, analyte), by = "study") %>%
     mutate(geno = NA)
   
-  # create gene-specific metadata using longMeta for subsetting
+  # Create gene-specific metadata using longMeta for subsetting
   longMetaByGene = lapply(names(suppList), function(gene) {
     longMeta %>% filter(study %in% suppList[[gene]])
   }) %>% `names<-`(names(suppList))
   
-  # create a joint genotype object across all studies
+  # Create a joint genotype object across all studies
   jointGeno = do.call(rbind, lapply(studies[
     names(studies) %in% smetadata$study], function(x) x$gdata))
   
-  # subset the joint genotype object by gene support
+  # Subset the joint genotype object by gene support
   jointGenoByGene = lapply(suppList, function(supp) {
     return(jointGeno[which(longMeta$study %in% supp),])
   }) %>% `names<-`(names(suppList))
   
-  # chrom indexing key for all markers (e.g. "ChrI")
+  # Chrom indexing key for all markers (e.g. "ChrI")
   cc = do.call('rbind', strsplit(colnames(jointGeno), ':'))[,1]
   
-  # create phenotypes object (gene long list of Seg x Chrom matrices)
+  # Create phenotypes object (gene long list of Seg x Chrom matrices)
   jointPhenoScaled = lapply(names(suppList), function(gene) {
     pheno_values = unlist(lapply(suppList[[gene]], function(studyName) {
       if (studyName %in% names(studies)) {
@@ -1626,31 +1440,31 @@ jointMarkerTest = function(studies,targetMarkers,unionBg,smetadata,suppGenes,
     cat("\n")
   }
   
-  # scale genotypes to control for variance at each locus gene-specifically
+  # Scale genotypes to control for variance at each locus gene-specifically
   jointGenoByGene = lapply(jointGenoByGene,scale)
   
   print('PREPARING PERMUTATION MATICES AND FINALIZAING MAPPING PREPARATIONS')
   
-  # chrom indexing key for targeted markers (e.g. "ChrI")
+  # Chrom indexing key for targeted markers (e.g. "ChrI")
   ct = do.call('rbind', strsplit(targetMarkers,':'))[,1]
   
-  # get study-stratified permutation matrices per gene (Perm x Seg)
+  # Get study-stratified permutation matrices per gene (Perm x Seg)
   permKey = lapply(longMetaByGene,function(x)stratPerm(x$study,nPerms))
   
-  # important model terms for later listing
+  # Important model terms for later listing
   mterms = c('geno', 'analyte:geno')
   
-  # test associations at each marker
+  # Test associations at each marker
   print('BEGINNING JOINT QTL MAPPING')
   mclapply(targetMarkers,function(marker){
     
-    # get index of current marker and true marker index
+    # Get index of current marker and true marker index
     mI = which(targetMarkers == marker)
     mT = which(trueMarkers == marker)
     print(paste0('mapping associations of marker #',
                  mI,' of ',length(targetMarkers),' at position ',marker))
     
-    # real associations (terms many matrices)
+    # Real associations (terms many matrices)
     rassocs = rep(list(
       list(
         gene = suppGenes,
@@ -1665,19 +1479,19 @@ jointMarkerTest = function(studies,targetMarkers,unionBg,smetadata,suppGenes,
         df %>% mutate(flavor = name)
       })
     
-    # signifiance measures
+    # Signifiance measures
     sgMeasures = c('absolute_effect','mlog10p')
     
-    # permutation assocations (mterms long Genes x Perms mats)
+    # Permutation assocations (mterms long Genes x Perms mats)
     passocs = rep(list(rep(list(
       matrix(NA, nrow = length(suppGenes), ncol = nPerms)), 
       length(mterms)) %>% `names<-`(mterms)),2) %>% 
       `names<-`(sgMeasures)
     
-    # sweep over genes
+    # Sweep over genes
     for(gene in seq_along(suppGenes)) {
       
-      # create the object to be used for association testing
+      # Create the object to be used for association testing
       perMeta = data.frame(
         study = longMetaByGene[[suppGenes[gene]]]$study,
         analyte = longMetaByGene[[suppGenes[gene]]]$analyte,
@@ -1685,7 +1499,7 @@ jointMarkerTest = function(studies,targetMarkers,unionBg,smetadata,suppGenes,
         pheno = jointPhenoScaled[[suppGenes[gene]]][,ct[mI]]
       )
       
-      # run the mixed model on the real data and get n and fixed effects
+      # Run the mixed model on the real data and get n and fixed effects
       datModel = lmer(
         pheno ~ (1|study) + analyte + geno + geno:analyte, data = perMeta,
         control = lmerControl(check.conv.singular = "ignore"))
@@ -1694,7 +1508,7 @@ jointMarkerTest = function(studies,targetMarkers,unionBg,smetadata,suppGenes,
       names(fixies)[3:4] = mterms
       datANOVA = anova(datModel)
       
-      # assign term values
+      # Assign term values
       for(mterm in mterms){
         rassocs[[mterm]][gene,'effect'] = fixies[mterm]
         rassocs[[mterm]][gene,'absolute_effect'] = abs(rassocs[[
@@ -1705,23 +1519,23 @@ jointMarkerTest = function(studies,targetMarkers,unionBg,smetadata,suppGenes,
           -log10(rassocs[[mterm]][gene,'p_value'])
       }
       
-      # permutations for FDR
+      # Permutations for FDR
       for(p in 1:nPerms){
         
-        # break genotype association using the permutation key
+        # Break genotype association using the permutation key
         perMeta$geno = perMeta$geno[permKey[[gene]][p,]]
         
-        # run the mixed model on the permutation data and get fixed effects
+        # Run the mixed model on the permutation data and get fixed effects
         datModel = lmer(
           pheno ~ (1|study) + analyte + geno + geno:analyte,data = perMeta,
           control = lmerControl(check.conv.singular = "ignore"))
         fixies = fixef(datModel) 
         names(fixies)[3:4] = mterms
         
-        # do ANOVA for p-values
+        # Do ANOVA for p-values
         datANOVA = anova(datModel)
         
-        # assign permutation geno and 'analyte:geno' LOD values for FDR step
+        # Assign permutation geno and 'analyte:geno' LOD values for FDR step
         for(measure in sgMeasures){
           for(mterm in mterms){
             if(measure == 'absolute_effect'){
@@ -1735,10 +1549,10 @@ jointMarkerTest = function(studies,targetMarkers,unionBg,smetadata,suppGenes,
       }
     }
     
-    # use empirical FDRs to determine QTLs
+    # Use empirical FDRs to determine QTLs
     lapply(mterms,function(mterm){
       
-      # test FDR thresholds over the data for both significance measures
+      # Test FDR thresholds over the data for both significance measures
       tt = sapply(sgMeasures,function(measure){
         
         # eFDRs are mean perm FDs over real discoveries at data-driven threshes
@@ -1748,18 +1562,18 @@ jointMarkerTest = function(studies,targetMarkers,unionBg,smetadata,suppGenes,
           mean(apply(passocs[[measure]][[mterm]],2,function(x)sum(x >= t))))
         eFDR = pPass/rPass
         
-        # remove NaNess from div by zero etc. and make FDR curve monotone
+        # Remove NaNess from div by zero etc. and make FDR curve monotone
         eFDR[is.na(eFDR)] = 0
         eFDR[!is.finite(eFDR)] = 0
         eFDR = rev(cummax(rev(eFDR)))
         
-        # use minimum threshold passing eFDR cutoff to write QTLs (if any)
+        # Use minimum threshold passing eFDR cutoff to write QTLs (if any)
         cuts = eFDR < FDR
         if(any(cuts)){return(lt[min(which(cuts))])} else {return(-max(lt))}
         
       }) %>% `names<-`(sgMeasures)
       
-      # if any QTL will pass any measure we figure out which
+      # If any QTL will pass any measure we figure out which
       if(any(tt > 0)){
         test = sapply(sgMeasures,function(measure){
           passed = rassocs[[mterm]][,measure] >= tt[measure]
@@ -1767,7 +1581,7 @@ jointMarkerTest = function(studies,targetMarkers,unionBg,smetadata,suppGenes,
             if (x > 0) tt[measure] else -tt[measure], numeric(1)))
         }) %>% as.data.frame() %>% `names<-`(paste0(sgMeasures,'_threshold'))
         
-        # filter to only QTLs passing FDR for at least one measure and save
+        # Filter to only QTLs passing FDR for at least one measure and save
         truQTLs = cbind(rassocs[[mterm]],test) %>% 
           (function(x)x[apply(test,1,function(y)any(y > 0)),])
         write.csv(truQTLs,file = paste0(
@@ -1783,8 +1597,10 @@ jointMarkerTest = function(studies,targetMarkers,unionBg,smetadata,suppGenes,
   },mc.cores=cores)
 }
 
-# performs assocation tests between all markers and genes 
-# does not include any form of FDR correction
+# Performs assocation tests between all markers and genes 
+# essentially a truncated and reformatted jointMarkerTest
+# Does not include any form of FDR correction
+# Also a memory-unoptimized hog
 rawAssocs = function(studies, targetMarkers, unionBg, smetadata,
                      suppGenes, fn, correctBG=FALSE, correctGRM=FALSE,
                      cores=1, chromosomes=NULL){
@@ -1797,20 +1613,20 @@ rawAssocs = function(studies, targetMarkers, unionBg, smetadata,
     dir.create(outPath, showWarnings = TRUE, recursive = FALSE)
   }
   
-  # get true marker positions
+  # Get true marker positions
   trueMarkers = colnames(studies[[1]]$gdata)
   
   # Define default 16 S. cervisiae chromosomes if none are provided
   if (is.null(chromosomes)) {chromosomes = paste0("chr",as.roman(1:16))}
   
-  # get a list of which studies support every gene
+  # Get a list of which studies support every gene
   suppList = lapply(suppGenes, function(gene) {
     studies_containing_gene = sapply(smetadata$genes,function(gene_list){
       gene %in% gene_list})
     smetadata$study[studies_containing_gene]
   }) %>% `names<-`(suppGenes)
   
-  # create per-gene metadata object (gene-long list with segregants as rows)
+  # Create per-gene metadata object (gene-long list with segregants as rows)
   longMeta = mapply(function(x, y) {
     rep(y, nrow(x$gdata))
   }, studies, names(studies)) %>%
@@ -1821,24 +1637,24 @@ rawAssocs = function(studies, targetMarkers, unionBg, smetadata,
     left_join(smetadata %>% select(study, analyte), by = "study") %>%
     mutate(geno = NA)
   
-  # create gene-specific metadata using longMeta for subsetting
+  # Create gene-specific metadata using longMeta for subsetting
   longMetaByGene = lapply(names(suppList), function(gene) {
     longMeta %>% filter(study %in% suppList[[gene]])
   }) %>% `names<-`(names(suppList))
   
-  # create a joint genotype object across all studies
+  # Create a joint genotype object across all studies
   jointGeno = do.call(rbind, lapply(studies[
     names(studies) %in% smetadata$study], function(x) x$gdata))
   
-  # subset the joint genotype object by gene support
+  # Subset the joint genotype object by gene support
   jointGenoByGene = lapply(suppList, function(supp) {
     return(jointGeno[which(longMeta$study %in% supp),])
   }) %>% `names<-`(names(suppList))
   
-  # chrom indexing key for all markers (e.g. "ChrI")
+  # Chrom indexing key for all markers (e.g. "ChrI")
   cc = do.call('rbind', strsplit(colnames(jointGeno), ':'))[,1]
   
-  # create phenotypes object (gene long list of Seg x Chrom matrices)
+  # Create phenotypes object (gene long list of Seg x Chrom matrices)
   jointPhenoScaled = lapply(names(suppList), function(gene) {
     pheno_values = unlist(lapply(suppList[[gene]], function(studyName) {
       if (studyName %in% names(studies)) {
@@ -1885,25 +1701,25 @@ rawAssocs = function(studies, targetMarkers, unionBg, smetadata,
     cat("\n")
   }
   
-  # scale genotypes to control for variance at each locus gene-specifically
+  # Scale genotypes to control for variance at each locus gene-specifically
   jointGenoByGene = lapply(jointGenoByGene,scale)
   
   print('FINALIZING ASSOCIATION PREPARATIONS')
   
-  # chrom indexing key for targeted markers (e.g. "ChrI")
+  # Chrom indexing key for targeted markers (e.g. "ChrI")
   ct = do.call('rbind', strsplit(targetMarkers,':'))[,1]
   
-  # CORE ASSOCIATION LOOP - OUTER LOOP IS MARKERS
+  # oop for all markers
   print('BEGINNING UNFILTERED ASSOCIATIONS AT SELECT MARKERS')
   mclapply(targetMarkers,function(marker){
     
-    # get index of current marker and true marker index
+    # Get index of current marker and true marker index
     mI = which(targetMarkers == marker)
     mT = which(trueMarkers == marker)
     print(paste0('mapping associations of marker #',
                  mI,' of ',length(targetMarkers),' at position ',marker))
     
-    # real associations (terms many matrices)
+    # Real associations (terms many matrices)
     rassocs = rep(list(
       list(
         gene = suppGenes,
@@ -1919,10 +1735,10 @@ rawAssocs = function(studies, targetMarkers, unionBg, smetadata,
           mutate(flavor = name)
       })
     
-    # sweep over the genes
+    # Sweep over the genes
     for (gene in seq_along(suppGenes)) {
       
-      # create the object to be used for association testing
+      # Create the object to be used for association testing
       perMeta = data.frame(
         study = longMetaByGene[[suppGenes[gene]]]$study,
         analyte = longMetaByGene[[suppGenes[gene]]]$analyte,
@@ -1930,54 +1746,54 @@ rawAssocs = function(studies, targetMarkers, unionBg, smetadata,
         pheno = jointPhenoScaled[[suppGenes[gene]]][,ct[mI]]
       )
       
-      # run the full model and ANOVA
+      # Run the full model and ANOVA
       datModel = lmer(
         pheno ~ (1|study) + analyte + geno + geno:analyte, data = perMeta,
         control = lmerControl(check.conv.singular = "ignore"))
       datANOVA = anova(datModel)
       
-      # run the mRNA-only model and ANOVA
+      # Run the mRNA-only model and ANOVA
       mMeta = perMeta[perMeta$analyte == "mRNA",]
       mModel = lmer(
         pheno ~ (1|study) + geno, data = mMeta,
         control = lmerControl(check.conv.singular = "ignore"))
       mANOVA = anova(mModel)
       
-      # run the protein model and ANOVA
+      # Run the protein model and ANOVA
       pMeta = perMeta[perMeta$analyte == "protein",]
       pModel = lmer(
         pheno ~ (1|study) + geno, data = pMeta,
         control = lmerControl(check.conv.singular = "ignore"))
       pANOVA = anova(pModel)
       
-      # assign analyte values
+      # Assign analyte values
       rassocs$analyte[gene,'pval'] = datANOVA["analyte","Pr(>F)"]
       rassocs$analyte[gene,'effect'] = fixef(datModel)['analyteprotein']
       rassocs$analyte[gene,'samplesize'] = nrow(perMeta)
       
-      # assign geno values
+      # Assign geno values
       rassocs$geno[gene,'pval'] = datANOVA["geno","Pr(>F)"]
       rassocs$geno[gene,'effect'] = fixef(datModel)['geno']
       rassocs$geno[gene,'samplesize'] = nrow(perMeta)
       
-      # assign ixn values
+      # Assign ixn values
       rassocs$ixn[gene,'pval'] = datANOVA["analyte:geno","Pr(>F)"]
       rassocs$ixn[gene,'effect'] = fixef(datModel)['analyteprotein:geno']
       rassocs$ixn[gene,'samplesize'] = nrow(perMeta)
       
-      # assign mRNA model
+      # Assign mRNA model
       rassocs$mRNA[gene,'pval'] = mANOVA["geno","Pr(>F)"]
       rassocs$mRNA[gene,'effect'] = fixef(mModel)['geno']
       rassocs$mRNA[gene,'samplesize'] = nrow(mMeta)
       
-      # assign protein model
+      # Assign protein model
       rassocs$protein[gene,'pval'] = pANOVA["geno","Pr(>F)"]
       rassocs$protein[gene,'effect'] = fixef(pModel)['geno']
       rassocs$protein[gene,'samplesize'] = nrow(pMeta)
       
     }
     
-    # update the list of all associations
+    # Update the list of all associations
     write.csv(rassocs, file = paste0(
       outPath,"marker_",mT,"_of_",length(trueMarkers),".csv"),
       row.names = FALSE)
@@ -1988,78 +1804,10 @@ rawAssocs = function(studies, targetMarkers, unionBg, smetadata,
   
 }
 
-# TESTS INDIVIDUAL GENE-MARKER ASSOCATIONS FOR ALL DATASETS - DEPRECATED
-# takes the study object and pairIDs as arguments
-pairInterrogator = function(studies, pairs) {
-  
-  # study names
-  studyNames = names(studies)
-  
-  # Precompute the table size
-  n_pairs = length(pairs)
-  n_studies = length(studies)
-  n_rows = n_pairs * n_studies
-  
-  # Initialize the output data frame
-  results = data.frame(
-    pairID = character(n_rows),
-    gene = character(n_rows),
-    marker = character(n_rows),
-    study = character(n_rows),
-    LOD = numeric(n_rows),
-    estimate = numeric(n_rows),
-    stringsAsFactors = FALSE
-  )
-  
-  row_idx = 1
-  
-  # announce  and initialize progress bar
-  print('Starting investigation of select pairs across datasets')
-  pb = txtProgressBar(min = 0, max = n_pairs, style = 3)
-  
-  # Loop over each pair
-  for (i in seq_along(pairs)) {
-    pair = pairs[i]
-    gene_marker = strsplit(pair, split = '_')[[1]]
-    gene = gene_marker[1]
-    marker = gene_marker[2]
-    
-    # Loop over each study
-    for (study_idx in seq_along(studies)) {
-      
-      # Check if the study contains the gene and marker
-      if (gene %in% colnames(studies[[study_idx]]$pclean) &&
-          marker %in% colnames(studies[[study_idx]]$gdata)) {
-        
-        # Compute the correlation test
-        summary = cor.test(studies[[study_idx]]$pclean[, gene],
-                           studies[[study_idx]]$gdata[, marker])
-        esti = summary$estimate
-        LOD = -log10(summary$p.value)
-        
-        # Store the results in the data frame
-        results[row_idx, ] = list(
-          pair, gene, marker, studyNames[study_idx], LOD, esti)
-        row_idx = row_idx + 1
-      }
-    }
-    # Update progress bar
-    setTxtProgressBar(pb, i)
-  }
-  
-  # Close progress bar
-  close(pb)
-  
-  # Remove unused rows if any
-  results = results[1:(row_idx - 1), ]
-  
-  return(results)
-}
-
-# FIGURE OUT WHICH DATASETS SUPPORT A GIVEN GENE
-# takes as argument a list of genes and special metadata object
+# Figures out which datasets support specific genes
+# Takes as argument a list of genes and special metadata object
 datSupportGenes = function(genes, metadata) {
-
+  
   # Initialize an empty list to store the results
   result_list <- list()
   
@@ -2082,7 +1830,9 @@ datSupportGenes = function(genes, metadata) {
 # ANALYSIS AND VISUALIZATION FUNCTIONS #
 ########################################
 
+# Formats string nicely for titles, plot legends, etc.
 titler = function(s, r = NULL, n = NULL, u = TRUE) {
+  
   # Check if replacement vectors are valid
   if (!is.null(r) & !is.null(n)) {
     if (length(r) != length(n)) {
@@ -2104,9 +1854,69 @@ titler = function(s, r = NULL, n = NULL, u = TRUE) {
   return(s)
 }
 
-# PLOT KEY TRACES FROM THE UNFILTERED ASSOCIATIONS
-tracePlotter = function(dat, column, rootDir = "plots/", rootName = "plot_",
-                        mc.cores = 1, r = NULL, n = NULL) {
+# Plots histograms of the raw and clean datasets on a study-by-study basis
+phenoHister = function(studies, dir, trueNames = NULL) {
+  
+  # Use the names of studies if trueNames is not provided
+  if (is.null(trueNames)) {
+    trueNames = names(studies)
+  }
+  
+  # Check that trueNames is the same length as studies
+  if (length(trueNames) != length(studies)) {
+    stop("trueNames must be the same length as studies")
+  }
+  
+  # Create the directory if it doesn't exist
+  if (!dir.exists(dir)) {
+    dir.create(dir, recursive = TRUE)
+  }
+  
+  # Iterate over each study and corresponding true name
+  for (i in seq_along(studies)) {
+    study = studies[[i]]
+    true_name = trueNames[i]
+    
+    # Create data frames for raw and processed data with a 'type' column
+    df_combined = rbind(
+      data.frame(mean_values = colMeans(study$pheno),
+                 type = factor("Raw", levels = c("Raw", "Processed"))),
+      data.frame(mean_values = colMeans(study$pclean),
+                 type = factor("Processed", levels = c("Raw", "Processed"))))
+    
+    # Create the plot with facet wrap
+    p_combined = ggplot(df_combined, aes(x = mean_values)) +
+      geom_histogram(bins = 30, color = "black") + 
+      facet_wrap(~type, scales = "free", ncol = 1) +  
+      labs(
+        title = true_name,
+        x = "Mean expression of gene across segregants",
+        y = "Frequency"
+      ) +
+      theme_bw() +
+      theme(
+        plot.title = element_text(color = "black"),
+        axis.title = element_text(color = "black"),
+        axis.text = element_text(color = "black"),
+        strip.text = element_text(color = "black"),
+        axis.text.x = element_text(angle = 45, hjust = 1)  
+      ) +
+      scale_x_continuous(labels = function(x) sprintf("%.2f", x)) 
+    
+    file_name = gsub(" ", "_", true_name) 
+    full_path = file.path(dir, paste0(file_name, "_phenotype_histograms.pdf"))
+    ggsave(filename = full_path, plot = p_combined, width = 7.5,
+           height = 5, limitsize = FALSE)
+  }
+}
+
+
+
+# Plots key traces from unfiltered assocations
+tracePlotter = function(dat, valueType, rootDir = "plots/", 
+                        rootName = "plot_",plotWidth=7.5,plotHeight=5,
+                        r = NULL, n = NULL) {
+  
   # Create directory if it doesn't exist
   if (!dir.exists(rootDir)) {
     dir.create(rootDir, recursive = TRUE)
@@ -2125,15 +1935,14 @@ tracePlotter = function(dat, column, rootDir = "plots/", rootName = "plot_",
   # Calculate chromosome label positions
   chr_labels_pos = round(
     (chrStarts[-length(chrStarts)] + chrStarts[-1] - 1) / 2)
-  chr_labels = as.roman(1:(length(chrStarts)-1))
+  chr_labels = as.roman(1:(length(chrStarts) - 1))
   
-  # Determine which columns are present in the data
-  available_prefixes = c("geno", "ixn", "protein", "mRNA")[
-    sapply(c("geno", "ixn", "protein", "mRNA"), function(x) 
-      any(grepl(paste0("^", x, "\\."), colnames(dat))))]
+  # Define prefixes and order them
+  all_prefixes = c("mRNA", "protein", "genotype", "interaction", "analyte")
   
-  # Create column names based on available prefixes
-  column_names = paste0(available_prefixes, ".", column)
+  # Determine which prefixes are present in the data
+  present_prefixes = all_prefixes[sapply(all_prefixes, function(x)
+    any(x == colnames(dat)))]
   
   # Ensure correct marker ordering
   dat$marker = factor(dat$marker, levels = grMarkers$josh)
@@ -2141,141 +1950,178 @@ tracePlotter = function(dat, column, rootDir = "plots/", rootName = "plot_",
   
   # Gather the data for plotting
   dat = dat %>%
-    select(gene, marker, all_of(column_names)) %>%
+    select(gene, marker, all_of(present_prefixes)) %>%
     gather(key = "flavor", value = "value", -gene, -marker)
+  
+  # Set the order of the flavor factor for plotting and legend
+  # reverse plotting order but normal legend order
+  dat$flavor_plot = factor(dat$flavor, levels = rev(present_prefixes))
+  dat$flavor_legend = factor(dat$flavor, levels = present_prefixes)
   
   # Split for plotting
   dat = split(dat, dat$gene)
   
   # Apply the function to each gene using mclapply
-  mclapply(dat, function(plot_data) {
+  lapply(dat, function(plot_data) {
     
-    # Create the plot title and axis labels using titler
-    column_cap = titler(column, r, n)
-    plot_data$flavor = sapply(plot_data$flavor, titler, r = r, n = n, u = FALSE)
+    # Determine the plot title and axis labels
+    if (valueType == "smltp") {
+      y_label = bquote("Signed " ~ -log[10](italic(p)))
+      plot_title = 
+        bquote(
+          "Signed " ~ -log[10](italic(p)) ~ "traces for" ~ .(plot_data$gene[1]))
+    } else {
+      y_label = valueType
+      plot_title = paste(valueType, "traces for", plot_data$gene[1])
+    }
     
-    # Create the plot
+    # Create the plot and save
     p = ggplot(plot_data, aes(x = as.numeric(marker), 
-                              y = value, color = flavor, group = flavor)) +
+                              y = value, color = flavor_legend,
+                              group = flavor_plot)) +
       geom_vline(xintercept = chrStarts, 
                  linetype = "dashed", color = "black") +
       geom_line() +
       scale_color_viridis_d(option = "viridis") +
-      labs(title = paste(column_cap, "trace for", plot_data$gene[1]),
-           x = "Chromosome", y = column_cap, color = "Flavor") +
+      labs(title = plot_title,
+           x = "Chromosome", y = y_label, color = NULL) + 
       theme_bw() +
       theme(legend.position = "bottom",
             legend.text = element_text(color = "black"),
             panel.grid.major.x = element_blank(),
             panel.grid.minor.x = element_blank(),
-            axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, color = "black"),
+            axis.text.x = element_text(angle = 45, vjust = 1,
+                                       hjust = 1, color = "black"),
             axis.text.y = element_text(color = "black"),
             axis.title = element_text(color = "black"),
             plot.title = element_text(color = "black"),
             strip.text = element_text(color = "black")) +
       scale_x_continuous(breaks = chr_labels_pos, labels = chr_labels)
-    
-    # Save the plot as a PDF
     ggsave(filename = paste0(rootDir, rootName, plot_data$gene[1], ".pdf"), 
-           plot = p, width = 8, height = 4.5, units = "in")
-  }, mc.cores = mc.cores)
+           plot = p, width = plotWidth, height = plotHeight, units = "in")
+  })
 }
 
-# GET GENETIC CORRELATION SUMMARY STATS AND HISTOGRAMS ACROSS GENES
-genCorFxn = function(targetAssocs, file_prefix, output_folder, infix) {
+# Gets genetic correlation summary stats and histograms across genes 
+mpSummarizer = function(data, directory) {
   
-  targetAssocs$mRNA.AE = abs(targetAssocs$mRNA.effect)
-  targetAssocs$protein.AE = abs(targetAssocs$protein.effect)
+  # Ensure the directory exists
+  ensure_directory(directory)
   
-  # Calculate correlation coefficients for effects
-  genCorsEffect = lapply(sort(unique(targetAssocs$gene)), function(gene) {
-    cor.test(targetAssocs[targetAssocs$gene == gene,]$mRNA.effect,
-             targetAssocs[targetAssocs$gene == gene,]$protein.effect,
-             method = 'pearson')
-  }) %>% `names<-`(sort(unique(targetAssocs$gene)))
-  
-  # Calculate correlation coefficients for AEs
-  genCorsAE = lapply(sort(unique(targetAssocs$gene)), function(gene) {
-    cor.test(targetAssocs[targetAssocs$gene == gene,]$mRNA.AE,
-             targetAssocs[targetAssocs$gene == gene,]$protein.AE,
-             method = 'pearson')
-  }) %>% `names<-`(sort(unique(targetAssocs$gene)))
-  
-  # Extract the correlation estimates
-  effect_corrs = sapply(genCorsEffect, function(x) x$estimate)
-  lod_corrs = sapply(genCorsAE, function(x) x$estimate)
-  
-  # Create the summary table
-  summary_table = data.frame(
-    Statistic = c("Min", "1st Qu.", "Median", "Mean", "3rd Qu.", "Max"),
-    Effect = as.numeric(summary(effect_corrs)),
-    AE = as.numeric(summary(lod_corrs))
+  # Create a list of effect types with corresponding transformations
+  effects_list = list(
+    mRNA_effects = lapply(data, function(x)
+      x$mRNA.allelic_effect),
+    Protein_effects = lapply(data, function(x)
+      x$protein.allelic_effect),
+    Difference_in_mRNA_and_protein_raw_effects = lapply(data, function(x)
+      x$mRNA.allelic_effect - x$protein.allelic_effect),
+    Difference_in_mRNA_and_protein_absolute_effects = lapply(data, function(x)
+      abs(x$mRNA.allelic_effect - x$protein.allelic_effect)),
+    Log10P_mRNA = lapply(data, function(x)
+      -log10(x$mRNA.pval)),
+    Log10P_Protein = lapply(data, function(x)
+      -log10(x$protein.pval)),
+    Log10P_mRNA_Protein = lapply(data, function(x)
+      -log10(x$mRNA.pval / x$protein.pval))
   )
   
-  # Transpose the summary table
-  summary_table_t = t(summary_table)
-  colnames(summary_table_t) = summary_table$Statistic
-  summary_table_t = as.data.frame(summary_table_t[-1,])
-  rownames(summary_table_t) = c("Effect", "AE")
-  
-  # Save the summary table
-  write.csv(summary_table_t, file.path(
-    output_folder, paste0(file_prefix, "_genet_cor_summary.csv")),
-    row.names = TRUE)
-  
-  # Combine correlation data for plotting
-  corr_data = data.frame(
-    type = rep(c("Effect", "AE"), each = length(effect_corrs)),
-    correlation = c(effect_corrs, lod_corrs)
-  )
-  
-  # Plot normalized histogram
-  p = ggplot(corr_data, aes(x = correlation, fill = type)) +
-    geom_histogram(aes(y = ..density..), bins = 30,
-                   position = "identity", alpha = 0.5) +
-    scale_fill_manual(
-      values = c("Effect" = "red", "AE" = "blue"), name = "Type") +
-    theme_minimal() +
-    labs(x = "Correlation Coefficient", y = "Density",
-         title = paste("Normalized Histogram of Correlation Coefficients (",
-                       infix, ")", sep = "")) +
-    theme(legend.position = "bottom")
-  
-  # Save the plot
-  ggsave(file.path(output_folder, "_genet_cor_hist.pdf"),
-         plot = p, width = 7.5, height = 5)
-}
+  # Loop through each effect type to create plots and summary statistics
+  for (effect_type in names(effects_list)) {
+    
+    # Convert list to long format dataframe for each effect type
+    combined_data = do.call(rbind, lapply(
+      names(effects_list[[effect_type]]), function(name) {
+        data.frame(
+          effect = effects_list[[effect_type]][[name]],
+          set = name
+        )
+      }))
+    
+    # Generate colors using the viridis palette
+    types = unique(combined_data$set)
+    colors = viridis::viridis(length(types))
+    names(colors) = types
+    
+    # Determine plot title, file naming, and x-label based on effect type
+    if (effect_type == "Log10P_mRNA_Protein") {
+      plot_title = bquote(
+        "-log"[10] ~ "(" ~ italic(p) ~ ") ratio of mRNA to protein")
+      effect_name = "Log10_P_Value_Ratio"
+      x_label = bquote("-log"[10] ~ "(" ~ italic(p) ~ ") ratio")
+    } else if (effect_type == "Log10P_mRNA") {
+      plot_title = bquote("-log"[10] ~ "mRNA" ~ italic(p) ~ "-values")
+      effect_name = "Log10_mRNA_P_values"
+      x_label = bquote("-log"[10] ~ "(" ~ italic(p) ~ ")")
+    } else if (effect_type == "Log10P_Protein") {
+      plot_title = bquote("-log"[10] ~ "protein" ~ italic(p) ~ "-values")
+      effect_name = "Log10_Protein_P_Values"
+      x_label = bquote("-log"[10] ~ "(" ~ italic(p) ~ ")")
+    } else if (effect_type == "mRNA_effects"){
+      plot_title = gsub("_", " ", effect_type)
+      effect_name = effect_type
+      x_label ='Allelic effect'
+    } else if (effect_type == "protein_effects") {
+      plot_title = gsub("_", " ", effect_type)
+      effect_name = effect_type
+      x_label ='Allelic effect'
+    } else {
+      plot_title = gsub("_", " ", effect_type)
+      effect_name = effect_type
+      x_label = "Difference in allelic effect"
+    }
+    
+    # Correct file naming
+    plot_filename = paste0(directory, effect_name, ".pdf")
+    summary_filename = paste0(directory, effect_name, ".csv")
 
-# CREATE A DENSITY NORMALIZED HISTOGRAM FOR QTL VERSUS CONTROL
-create_normalized_histogram = 
-  function(data, variable, title_suffix, root_filename) {
-    # Calculate the weights for normalization
-    data = data %>%
-      group_by(group) %>%
-      mutate(weight = 1 / n())
+    # Plot for each effect type
+    p = ggplot(combined_data, aes(x = effect, fill = set)) +
+      geom_histogram(alpha = 0.6, position = 'identity', 
+                     bins = 30, aes(y = after_stat(density)), 
+                     color = "black") + # Add black outlines to the bars
+      labs(x = x_label, y = "Density", title = plot_title) +
+      scale_fill_manual(values = colors, name = NULL) +
+      theme_bw() +
+      theme(
+        legend.position = "bottom",
+        legend.text = element_text(color = "black"),
+        legend.title = element_blank(),
+        axis.text.x = element_text(color = "black"),
+        axis.text.y = element_text(color = "black"),
+        axis.title.x = element_text(color = "black"),
+        axis.title.y = element_text(color = "black"),
+        plot.title = element_text(color = "black"),
+        strip.text = element_text(color = "black")
+      )
     
-    # Plot the normalized histograms on the same axes
-    p = ggplot(data, aes(x = !!sym(variable), fill = group, weight = weight)) +
-      geom_histogram(alpha = 0.6, position = 'identity',
-                     bins = 30, aes(y = after_stat(density))) +
-      labs(title = paste("Normalized Histogram of", title_suffix),
-           x = title_suffix,
-           y = "Density") +
-      scale_fill_manual(values = c("Control" = "blue", "QTL" = "red"),
-                        name = "Group") +
-      theme_minimal()
+    # Save the plot with a specified width and height
+    ggsave(plot_filename, plot = p, width = 7.5, height = 5)
     
-    # Save the plot with a 3:2 width-to-height ratio
-    plot_filename = paste0(root_filename, "_",
-                           tolower(title_suffix), "_hist.png")
-    ggsave(plot_filename, plot = p, width = 9, height = 6)
+    # Generate summary statistics for each effect type
+    summary_stats = combined_data %>%
+      group_by(set) %>%
+      summarise(
+        Min = min(effect),
+        `1st Qu.` = quantile(effect, 0.25),
+        Median = median(effect),
+        Mean = mean(effect),
+        `3rd Qu.` = quantile(effect, 0.75),
+        Max = max(effect),
+        .groups = 'drop'
+      )
+    
+    # Save summary statistics
+    write.table(summary_stats, file = summary_filename, sep = ",", 
+                row.names = FALSE, quote = FALSE)
   }
+}
 
-# POINT BY POINT LINKED BOXPLOT OVERLAY PLOT
+# Point by point linked boxplot (the famous funfetti plot)
 mpLinkPlotter = function(data, filename, infix, r = NULL, n = NULL) {
   data_long = data %>%
-    dplyr::select(pairID, mRNA.effect, protein.effect) %>%
-    tidyr::pivot_longer(cols = c(mRNA.effect, protein.effect), 
+    dplyr::select(pairID, mRNA.allelic_effect, protein.allelic_effect) %>%
+    tidyr::pivot_longer(cols = c(mRNA.allelic_effect, protein.allelic_effect), 
                         names_to = "effect_type", 
                         values_to = "effect_value")
   
@@ -2283,7 +2129,8 @@ mpLinkPlotter = function(data, filename, infix, r = NULL, n = NULL) {
   data_long$effect_type = sub("\\..*", "", data_long$effect_type)
   
   # Use the titler function to format the x-axis labels
-  data_long$effect_type = sapply(data_long$effect_type, titler, r = r, n = n, u = FALSE)
+  data_long$effect_type = sapply(data_long$effect_type,
+                                 titler, r = r, n = n, u = FALSE)
   
   # Determine the title based on infix
   if (infix == "ixn") {
@@ -2294,11 +2141,13 @@ mpLinkPlotter = function(data, filename, infix, r = NULL, n = NULL) {
     title_infix = infix
   }
   
-  p = ggplot(data_long, aes(x = effect_type, y = effect_value, color = pairID)) +
-    geom_boxplot(outlier.shape = NA, fill = "white", color = "black") +
+  p = ggplot(data_long, aes(x = effect_type, 
+                            y = effect_value, color = pairID)) +
+    geom_boxplot(outlier.shape = 1, color = "black") +
     geom_line(aes(group = pairID), linewidth = 0.5) +
     scale_color_viridis(discrete = TRUE) +
-    geom_hline(yintercept = 0, linetype = "dashed", linewidth = 1, color = "black") +
+    geom_hline(yintercept = 0, linetype = "dashed",
+               linewidth = 1, color = "black") +
     theme_minimal() +
     theme(
       legend.position = "none",
@@ -2308,155 +2157,112 @@ mpLinkPlotter = function(data, filename, infix, r = NULL, n = NULL) {
       axis.title.y = element_text(color = "black"),
       plot.title = element_text(color = "black")
     ) +
-    labs(x = "Effect Type", y = "Allelic Effect", 
+    labs(x = "Effect type", y = "Allelic effect", 
          title = paste("mRNA and protein effects", title_infix))
   
-  # Add the infix before the file extension
-  file_parts = tools::file_path_sans_ext(filename)
-  new_filename = paste0(file_parts, "_", infix, ".pdf")
+  ggsave(filename, plot = p, width = 7.5, height = 5)
   
-  ggsave(new_filename, plot = p, width = 7.5, height = 5)
 }
 
-# GET GENETIC CORRELATION SUMMARY STATS AND HISTOGRAMS ACROSS GENES
-genCorFxn = function(targetAssocs, file_prefix, output_folder, infix) {
+# Summarize mRNA and protein differences
+mpSummarizer = function(data, directory) {
   
-  targetAssocs$mRNA.AE = abs(targetAssocs$mRNA.effect)
-  targetAssocs$protein.AE = abs(targetAssocs$protein.effect)
+  # Ensure the directory exists
+  ensure_directory(directory)
   
-  # Calculate correlation coefficients for effects
-  genCorsEffect = lapply(sort(unique(targetAssocs$gene)), function(gene) {
-    cor.test(targetAssocs[targetAssocs$gene == gene,]$mRNA.effect,
-             targetAssocs[targetAssocs$gene == gene,]$protein.effect,
-             method = 'pearson')
-  }) %>% `names<-`(sort(unique(targetAssocs$gene)))
-  
-  # Calculate correlation coefficients for AEs
-  genCorsAE = lapply(sort(unique(targetAssocs$gene)), function(gene) {
-    cor.test(targetAssocs[targetAssocs$gene == gene,]$mRNA.AE,
-             targetAssocs[targetAssocs$gene == gene,]$protein.AE,
-             method = 'pearson')
-  }) %>% `names<-`(sort(unique(targetAssocs$gene)))
-  
-  # Extract the correlation estimates
-  effect_corrs = sapply(genCorsEffect, function(x) x$estimate)
-  lod_corrs = sapply(genCorsAE, function(x) x$estimate)
-  
-  # Create the summary table
-  summary_table = data.frame(
-    Statistic = c("Min", "1st Qu.", "Median", "Mean", "3rd Qu.", "Max"),
-    Effect = as.numeric(summary(effect_corrs)),
-    AE = as.numeric(summary(lod_corrs))
-  )
-  
-  # Transpose the summary table
-  summary_table_t = t(summary_table)
-  colnames(summary_table_t) = summary_table$Statistic
-  summary_table_t = as.data.frame(summary_table_t[-1,])
-  rownames(summary_table_t) = c("Effect", "AE")
-  
-  # Save the summary table
-  write.csv(summary_table_t, file.path(
-    output_folder, paste0(file_prefix, "_genet_cor_summary.csv")),
-    row.names = TRUE)
-  
-  # Combine correlation data for plotting
-  corr_data = data.frame(
-    type = rep(c("Effect", "AE"), each = length(effect_corrs)),
-    correlation = c(effect_corrs, lod_corrs)
-  )
-  
-  # Plot normalized histogram
-  p = ggplot(corr_data, aes(x = correlation, fill = type)) +
-    geom_histogram(aes(y = ..density..), bins = 30,
-                   position = "identity", alpha = 0.5) +
-    scale_fill_manual(
-      values = c("Effect" = "red", "AE" = "blue"), name = "Type") +
-    theme_minimal() +
-    labs(x = "Correlation Coefficient", y = "Density",
-         title = paste("Normalized Histogram of Correlation Coefficients (",
-                       infix, ")", sep = "")) +
-    theme(legend.position = "bottom")
-  
-  # Save the plot
-  ggsave(file.path(output_folder, "_genet_cor_hist.png"),
-    plot = p, width = 9, height = 6)
-}
-
-# SUMMARY MRNA AND PROTEIN DIFFERENCES
-mpSummarizer = function(data, root_filename) {
-  # Create a combined dataframe in long format
+  # Create a list of effect types with corresponding transformations
   effects_list = list(
-    mRNA_effect = lapply(data, function(x) x$mRNA.effect),
-    protein_effect = lapply(data, function(x) x$protein.effect),
-    raw_difference = lapply(data, function(x) x$mRNA.effect - x$protein.effect),
-    abs_difference = lapply(data, function(x) abs(x$mRNA.effect - x$protein.effect))
+    mRNA_effect = lapply(data, function(x) 
+      x$mRNA.allelic_effect),
+    Protein_effect = lapply(data, function(x) 
+      x$protein.allelic_effect),
+    Genotype_effect = lapply(data, function(x) 
+      x$mRNA.allelic_effect - x$protein.allelic_effect),
+    Absolute_effect = lapply(data, function(x) 
+      abs(x$mRNA.allelic_effect - x$protein.allelic_effect)),
+    MinusLog10P_difference = lapply(data, function(x) 
+      abs(x$mRNA.pval) - abs(x$protein.pval))
   )
   
-  # Convert list to long format dataframe
-  combined_data = do.call(rbind, lapply(names(effects_list), function(effect_type) {
-    do.call(rbind, lapply(names(effects_list[[effect_type]]), function(name) {
-      data.frame(
-        measure = effect_type,
-        effect = effects_list[[effect_type]][[name]],
-        set = name
+  # Function to lowercase only the first letter of a string
+  tolower_first = function(x) {
+    paste0(tolower(substr(x, 1, 1)), substr(x, 2, nchar(x)))
+  }
+  
+  # Loop through each effect type to create plots and summary statistics
+  for (effect_type in names(effects_list)) {
+    
+    # Convert list to long format dataframe for each effect type
+    combined_data = do.call(rbind, lapply(
+      names(effects_list[[effect_type]]), function(name) {
+        data.frame(
+          effect = effects_list[[effect_type]][[name]],
+          set = name
+        )
+      }))
+    
+    # Generate colors using the viridis palette
+    types = unique(combined_data$set)
+    colors = viridis::viridis(length(types))
+    names(colors) = types
+    
+    # Create plot title with special handling for MinusLog10P_difference
+    if (effect_type == "MinusLog10P_difference") {
+      plot_title = 
+        bquote("mRNA and protein differences in" ~ -log[10](italic(p)))
+    } else {
+      plot_title =
+        paste("mRNA and protein differences in", 
+              tolower_first(gsub("_", "", effect_type)))
+    }
+    
+    # Plot for each effect type
+    p = ggplot(combined_data, aes(x = effect, fill = set)) +
+      geom_histogram(alpha = 0.6, position = 'identity', 
+                     bins = 30, aes(y = after_stat(density))) +
+      labs(x = "Effect", y = "Density", title = plot_title) +
+      scale_fill_manual(values = colors, name = "QTL Type") +
+      theme_bw() +
+      theme(
+        legend.position = "right",
+        legend.text = element_text(color = "black"),
+        legend.title = element_text(color = "black"),
+        axis.text.x = element_text(color = "black"),
+        axis.text.y = element_text(color = "black"),
+        axis.title.x = element_text(color = "black"),
+        axis.title.y = element_text(color = "black"),
+        plot.title = element_text(color = "black"),
+        strip.text = element_text(color = "black")
       )
-    }))
-  }))
-  
-  # Generate colors using the viridis palette
-  types = unique(combined_data$set)
-  colors = viridis(length(types))
-  names(colors) = types
-  
-  # Plot with facet_wrap
-  p = ggplot(combined_data, aes(x = effect, fill = set)) +
-    geom_histogram(alpha = 0.6, position = 'identity', bins = 30, aes(y = after_stat(density))) +
-    labs(x = "Effect", y = "Density") +
-    scale_fill_manual(values = colors, name = "QTL Type") +
-    theme_bw() +
-    theme(
-      legend.position = "right",
-      legend.text = element_text(color = "black"),
-      legend.title = element_text(color = "black"),
-      axis.text.x = element_text(color = "black"),
-      axis.text.y = element_text(color = "black"),
-      axis.title.x = element_text(color = "black"),
-      axis.title.y = element_text(color = "black"),
-      plot.title = element_text(color = "black"),
-      strip.text = element_text(color = "black")
-    ) +
-    facet_wrap(~ measure, scales = "free", ncol = 1, labeller = labeller(measure = c(
-      mRNA_effect = "Normalized Histogram of mRNA Effect",
-      protein_effect = "Normalized Histogram of Protein Effect",
-      raw_difference = "Normalized Histogram of Raw Differences",
-      abs_difference = "Normalized Histogram of Absolute Differences"
-    )))
-
-  # Save the plot with a 3:2 width-to-height ratio
-  plot_filename = paste0(root_filename, "_combined_hist.pdf")
-  ggsave(plot_filename, plot = p, width = 8.5, height = 11)
-  
-  # Generate summary statistics
-  summary_stats = combined_data %>%
-    group_by(set, measure) %>%
-    summarise(
-      Min = min(effect),
-      `1st Qu.` = quantile(effect, 0.25),
-      Median = median(effect),
-      Mean = mean(effect),
-      `3rd Qu.` = quantile(effect, 0.75),
-      Max = max(effect),
-      .groups = 'drop'
-    ) %>%
-    pivot_wider(names_from = measure, values_from = c(Min, `1st Qu.`, Median, Mean, `3rd Qu.`, Max))
-  
-  # Save summary statistics
-  summary_filename = paste0(root_filename, "_summary.csv")
-  write.table(summary_stats, file = summary_filename, sep = ",", row.names = FALSE, quote = FALSE)
+    
+    # Save the plot with a 3:2 width-to-height ratio
+    plot_filename = paste0(directory, "/mRNA_and_protein_differences_in_",
+                           tolower_first(gsub("_", "", effect_type)), ".pdf")
+    ggsave(plot_filename, plot = p, width = 7.5, height = 5)
+    
+    # Generate summary statistics for each effect type
+    summary_stats = combined_data %>%
+      group_by(set) %>%
+      summarise(
+        Min = min(effect),
+        `1st Qu.` = quantile(effect, 0.25),
+        Median = median(effect),
+        Mean = mean(effect),
+        `3rd Qu.` = quantile(effect, 0.75),
+        Max = max(effect),
+        .groups = 'drop'
+      )
+    
+    # Save summary statistics
+    summary_filename = paste0(directory, "/mRNA_and_protein_differences_in_",
+                              tolower_first(gsub("_", "", effect_type)), ".csv")
+    write.table(summary_stats, file = summary_filename, sep = ",", 
+                row.names = FALSE, quote = FALSE)
+  }
 }
 
-# TRACE LOD OR EFFECT SIZE ACROSS STUDIES INDIVIDUALLY
+
+# Trace LOD or effect size across studies individually
 studyTracer = function(studies, smeta, suppGenes, fn, 
                        plotHeight, plotWidth, traceType) {
   
@@ -2474,10 +2280,12 @@ studyTracer = function(studies, smeta, suppGenes, fn,
     cumsum()
   
   # Add the final index to chrStarts
-  chrStarts = c(chrStarts, length(unique(unlist(lapply(studies, function(study) colnames(study$gdata))))) + 1)
+  chrStarts = c(chrStarts, length(unique(unlist(lapply(studies, function(study)
+    colnames(study$gdata))))) + 1)
   
   # Calculate chromosome label positions
-  chr_labels_pos = round((chrStarts[-length(chrStarts)] + chrStarts[-1] - 1) / 2)
+  chr_labels_pos = ((chrStarts[-length(chrStarts)] + chrStarts[-1] - 1)/2) %>%
+    round()
   chr_labels = as.roman(1:(length(chrStarts) - 1))
   
   # Get supporting data matrix
@@ -2521,11 +2329,11 @@ studyTracer = function(studies, smeta, suppGenes, fn,
       sLOD = sLODs[[dataset]]
       gene_row = rownames(sLOD) == rownames(suppMat)[i]
       if(any(gene_row)){
-      return(data.frame(
-        marker = colnames(sLOD),
-        value = sLOD[gene_row, ],
-        gene = rownames(suppMat)[i],
-        dataset = dataset))
+        return(data.frame(
+          marker = colnames(sLOD),
+          value = sLOD[gene_row, ],
+          gene = rownames(suppMat)[i],
+          dataset = dataset))
       }
     })
     
@@ -2551,9 +2359,9 @@ studyTracer = function(studies, smeta, suppGenes, fn,
     plotDat$marker = factor(plotDat$marker, levels = unique(plotDat$marker))
     plotDat$gene = factor(plotDat$gene, levels = suppGenes)
     
-    plotTitle = if (traceType == "s") "Signed LOD Scores for" else 
-      "R-values for"
-    yAxisLabel = if (traceType == "s") "Signed LOD" else 
+    plotTitle = if (traceType == "s") "Signed LOD score traces for" else 
+      "R-value traces for"
+    yAxisLabel = if (traceType == "s") "Signed LOD score" else 
       "R-value"
     
     p = ggplot(plotDat, aes(
@@ -2574,18 +2382,28 @@ studyTracer = function(studies, smeta, suppGenes, fn,
             legend.text = element_text(size = 8, color = "black"),
             panel.grid.major.x = element_blank(),
             panel.grid.minor.x = element_blank(),
-            axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, color = "black"),
+            axis.text.x = element_text(angle = 45, vjust = 1,
+                                       hjust = 1, color = "black"),
             axis.text.y = element_text(color = "black"),
             axis.title = element_text(color = "black"),
             plot.title = element_text(color = "black"),
             strip.text = element_text(color = "black")) +
       scale_x_continuous(breaks = chr_labels_pos, labels = chr_labels)
     
-    ggsave(filename = paste0(fn, "/", rownames(suppMat)[i], ".pdf"), 
+    # Set the file prefix based on traceType
+    file_prefix = if (traceType == "s") {
+      "Signed_LOD_traces_for"
+    } else {
+      "R_value_traces_for"
+    }
+    
+    # Save the plot with the appropriate file name
+    ggsave(filename = paste0(fn, "/", file_prefix, "_", 
+                             rownames(suppMat)[i], ".pdf"), 
            plot = p, width = plotWidth, height = plotHeight, units = "in")
   }
   
   pbapply::closepb(pb)
 }
 
-print('SOURCE SUCCESSFUL')
+print('SOURCE OF CONSTANTS AND FUNCTIONS WAS SUCCESSFUL')
