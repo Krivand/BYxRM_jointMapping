@@ -1,20 +1,21 @@
 #!/bin/bash
-# can be called within project folder using ./jRemapHotspots.sh 
-# don't forget to allow permissions using chmod +x jRemapHotspots.sh
+# can be called within project folder using ./jRawMedium.sh 
+# don't forget to allow permissions using chmod +x jRawMedium.sh
 
 # Define project path
 PROJECTPATH=/home/albertf/vandy147/p05
 
 # SPECIFY PARAMETERS
-NUM_JOBS=8
-BASE_NAME="jRemapHotspots"
-WALL_TIME="24:00:00"
+NUM_JOBS=16
+BASE_NAME="jRawMedium"
+WALL_TIME="8:00:00"
 MEMORY="120G"
 MAIL_TYPE="ALL"
 MAIL_USER="vandy147@umn.edu"
+CPUS_PER_TASK=64
 
 # Calculate the number of elements per job
-TOTAL_ELEMENTS=102
+TOTAL_ELEMENTS=3593
 ELEMENTS_PER_JOB=$((TOTAL_ELEMENTS / NUM_JOBS))
 REMAINDER=$((TOTAL_ELEMENTS % NUM_JOBS))
 
@@ -31,8 +32,6 @@ for ((i=0; i<NUM_JOBS; i++)); do
   if [ $i -lt $REMAINDER ]; then
     END=$((END + 1))
   fi
-
-  CPUS_PER_TASK=$((END - START + 1))
 
   sbatch --job-name=${BASE_NAME}_${i} \
          --output=${PROJECTPATH}/logs/${BASE_NAME}_${i}.out \

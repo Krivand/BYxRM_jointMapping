@@ -1,3 +1,11 @@
+#################################
+#################################
+## JOINT ASSOCIATION ANALYSIS  ##
+## HOTSPOT MARKERS             ##
+#################################
+#################################
+
+
 ############################################
 # SOURCE IMPORTANT FUNCTIONS AND CONSTANTS #
 ############################################
@@ -9,11 +17,68 @@ source(paste0("/home/albertf/vandy147/p05/",
 # LOAD IN OBJECTS #
 ###################
 
-# LOAD IN UNFILTERED ASSOCATIONS AND PREPARE
-load(paste0(imed,"unfilteredAssocs.rda"))
+# Get the script set type from command-line arguments
+args = commandArgs(trailingOnly = TRUE)
 
-# Remove duplicate marker and gene columns
-unfilteredAssocs = unfilteredAssocs %>% 
+# Check if scriptSet argument is provided
+if (length(args) == 0) {
+  stop("No scriptSet argument provided. Please specify 'analyte' or 'medium'.")
+}
+
+# get the script set type
+scriptSet = args[1]
+
+# Check if scriptSet is valid
+if(!(scriptSet %in% c('analyte', 'medium'))){
+  stop("Invalid scriptSet option. Please choose either 'analyte' or 'medium'.")
+}
+
+# load QTLs and raw assocations
+if(scriptSet == 'analyte'){
+  
+  # QTLs
+  load(paste0(imed,"jahQTLs.rda"))
+  jointHotspotQTLs = jahQTLs
+  rm(jahQTLs)
+  
+  # raw assocations
+  load(paste0(imed,"raAnalyte.rda"))
+  raAssocs = raAnalyte
+  rm(raAnalyte)
+  
+} else {
+  
+  # QTLs
+  load(paste0(imed, "jmhQTLs.rda"))
+  jointHotspotQTLs = jmhQTLs %>%
+    filter(!grepl("^chr(II|III|V|XIV):", marker))
+  rm(jmhQTLs)
+  
+  # Raw associations
+  load(paste0(imed, "raMedium.rda"))
+  raAssocs = raMedium %>%
+    filter(!grepl("^chr(II|III|V|XIV):", geno.marker))
+  rm(raMedium)
+  
+}
+
+# drop QTLs passing 5% FDR but having a weak nominal p-value, then format nicely
+jointHotspotQTLs = jointHotspotQTLs %>%
+  filter(p_value < 0.05) %>%
+  mutate(pairID = paste(gene, marker, sep = "_")) %>%
+  select(pairID, gene, marker, flavor, 
+         samplesize, p_value, mlog10p, effect) %>%
+  mutate(flavor = case_when(
+    scriptSet == "analyte" & flavor == "analyte:geno" ~ "ixn",
+    scriptSet == "medium" & flavor == "medium:geno" ~ "ixn",
+    TRUE ~ flavor
+  ))
+ensure_directory(paste0(asys,"info_",scriptSet,"/"))
+write.csv(jointHotspotQTLs,row.names=FALSE,file=paste0(
+  asys,"info_",scriptSet,"/","joint_hotspot_QTLs_",scriptSet,".csv"))
+
+# remove duplicate marker and gene columns
+raAssocs = raAssocs %>% 
   rename(marker = geno.marker, gene = geno.gene) %>%
   select(-matches("\\.marker$"), 
          -matches("\\.gene$"), 
@@ -24,18 +89,6 @@ unfilteredAssocs = unfilteredAssocs %>%
     .fn = ~ sub("\\.effect$", ".allelic_effect", .x),
     .cols = ends_with(".effect")
   )
-
-# load in joint QTL objects
-load(paste0(imed,"jhQTLs.rda"))
-
-jhQTLs = jhQTLs %>% mutate(pairID = paste(gene, marker, sep = "_"))
-
-jointHotspotQTLs = jhQTLs %>%
-  filter(mlog10p_threshold > 0) %>%
-  rename(threshold = mlog10p_threshold) %>%
-  select(pairID, gene, marker, flavor, samplesize, p_value,
-         mlog10p, effect, absolute_effect, threshold) %>%
-  mutate(flavor = ifelse(flavor == "analyte:geno", "ixn", flavor))
 
 # read in the gene metadata table from yeastmine
 geneInfo = read.csv(paste0(
@@ -98,16 +151,32 @@ studyMetadata$segs = lapply(studyMetadata$study,
                             function(x)rownames(studies[[x]]$pheno))
 
 
-# scaMetadata is metadata in SC using genotype A (not Albert 2018)
-scaMetadata = studyMetadata %>%
-  dplyr::filter(medium == "SC", genetic_background == "A")
+if(scriptSet == 'analyte'){
+  
+  # metadata in SC using genotype A (not Albert 2018)
+  subsetMeta = studyMetadata %>%
+    dplyr::filter(medium == "SC", genetic_background == "A")
+  
+} else {
+  
+  # metadata must be mRNA only and exclude YNB2E
+  subsetMeta = studyMetadata %>%
+    filter(medium %in% c('SC', 'YNB2G')) %>%
+    filter(analyte == 'mRNA')
+  
+}
 
-# within the synthetic complete media (sc) datasets
-# find which genes are supported by at least two datasets 
-doubleSupp = suppTwo(scaMetadata)
-print(paste0('Within the SC media with genotype A subset there are ',
-             length(doubleSupp),
-             ' genes supported by two mRNA and two protein datasets'))
+# find which genes are supported by at least two datasets
+doubleSupp = suppTwo(subsetMeta,type=scriptSet)
+print(paste('Within the',scriptSet,"analyses there are",length(doubleSupp),
+            'genes supported by two different studies'))
+write.table(doubleSupp, file = 
+              paste0(asys,"info_",scriptSet,"/",
+                     "supported_genes_",scriptSet,".txt"), 
+            row.names = FALSE, col.names = FALSE, quote = FALSE)
+write.csv(subsetMeta %>% select(-genes, -segs), file = paste0(
+  asys,"info_",scriptSet,"/","supported_studies_",scriptSet,".csv"), 
+  row.names = FALSE, quote = FALSE)
 
 # hotspot data
 hotspots = readxl::read_excel(
@@ -115,9 +184,6 @@ hotspots = readxl::read_excel(
   as.data.frame()
 
 # prepare to add new hand-curated hotspots
-geneInfo = read.csv(paste0(
-  raw,file='yeastmine_results_2024-06-18T13-15-41.csv'))
-
 newHotspots = geneInfo[which(geneInfo$Gene...Standard.Name %in% 
                                c('URA3','LEU2','AMN1')),] %>%   
   select(
@@ -138,13 +204,17 @@ print('Here are additional new hotspots')
 print(newHotspots)
 
 # get the indices of hotspots approximated in Grossbach-coordinates
+# removes chromsomes with engineering diffs or mutations in the medium sets
 gr_studies = markRanger(colnames(studies[[1]]$gdata))
 gr_hotspots = markRanger(hotspots$hotspotMarker[
   hotspots$hotspotMarker != 'chrXIV:372376_G/A']) %>%
   (function(x)c(x,newHotspots)) %>% sort()
 mcols(gr_hotspots)$josh = grToJosh(gr_hotspots)
 nearest_indices = nearest(gr_hotspots, gr_studies)
-portedHotspots = gr_studies[nearest_indices] %>% grToJosh()
+portedHotspots = gr_studies[nearest_indices] %>% 
+  grToJosh() %>%
+  {if (scriptSet == "medium") {
+    magrittr::extract(., !grepl("^chr(II|III|V|XIV):", .))} else {.}}
 rm(gr_studies,gr_hotspots,nearest_indices)
 
 # GET GRANGES THAT HOLD THE CLOSET (ANY) MARKER TO EACH GENE
@@ -160,42 +230,39 @@ all(doubleSupp %in% geneInfo$Gene...Systematic.Name)
 suppInfo = geneInfo[geneInfo$Gene...Systematic.Name %in% doubleSupp,]
 
 # convert the list to a data frame
-dfSupp = list(suppInfo$Gene...Systematic.Name,
-               suppInfo$Gene...Chromosome...Identifier,
-               suppInfo$Gene...Chromosome.Location...Start,
-               suppInfo$Gene...Chromosome.Location...End) %>% 
+dfSupp = list(
+  suppInfo$Gene...Systematic.Name,
+  suppInfo$Gene...Chromosome...Identifier,
+  suppInfo$Gene...Chromosome.Location...Start,
+  suppInfo$Gene...Chromosome.Location...End
+) %>% 
   as.data.frame() %>%
-  `names<-`(c('gene','chr','start','end'))
+  `names<-`(c('gene', 'chr', 'start', 'end'))
 rm(suppInfo)
-
 
 # create GRanges objects
 grSupp = GRanges(seqnames = dfSupp$chr,
-                   ranges = IRanges(start = dfSupp$start, end = dfSupp$end),
-                   gene = dfSupp$gene)
+                 ranges = IRanges(start = dfSupp$start, end = dfSupp$end),
+                 gene = dfSupp$gene)
 
-grAllMarkers = markRanger(unique(unfilteredAssocs$marker)) %>% sort()
+grAllMarkers = markRanger(unique(raAssocs$marker)) %>% sort()
 
-# Find the nearest markers
+# Find the nearest markers and create the closest genes and markers dataframe
 nearest_indices = nearest(grSupp, grAllMarkers)
-
-# Create the dataframe with genes and closest markers
 closeMarkers = data.frame(
-  gene = mcols(grSupp)$gene,
-  marker = mcols(grAllMarkers[nearest_indices])$josh
+  gene = mcols(grSupp)$gene[!is.na(nearest_indices)],
+  marker = mcols(grAllMarkers[nearest_indices[!is.na(nearest_indices)]])$josh
 )
-
 rm(nearest_indices)
 
 # get hotspot objects with pval adjustments
-unfilteredHotspots = unfilteredAssocs[
-  unfilteredAssocs$marker %in% portedHotspots,] %>%
+unfilteredHotspots = raAssocs[
+  raAssocs$marker %in% portedHotspots,] %>%
   mutate(across(
     ends_with(".allelic_effect"),
     ~ abs(.),
     .names = "{gsub('\\\\.allelic_effect$', '', .col)}.absolute_allelic_effect"
   ))
-
 
 ##############
 ##############
@@ -203,49 +270,13 @@ unfilteredHotspots = unfilteredAssocs[
 ##############
 ##############
 
-#########################################################
-# MAKE SOME CRITICAL SUMMARY TABLES FROM LOADED OBJECTS #
-#########################################################
-
-# create a useful subfolder
-ensure_directory(paste0(asys,'association_summaries'))
-
-# get gene pair associations saved for the permutation discovered hotspots
-file_path = paste0(asys, "association_summaries/joint_hotspot_QTLs.csv")
-if (!file.exists(file_path)) {
-  write.csv(jointHotspotQTLs, file = file_path, row.names = FALSE)
-} else {
-  message("File already exists: ", file_path)
-}
-
-# get gene pair associations saved for all gene-marker associations
-file_path = paste0(
-  asys, 'association_summaries/all_gene_marker_assocations.csv')
-if (!file.exists(file_path)) {
-  unfilteredAssocs %>%
-    select(-pairID) %>%
-    write.csv(file = file_path, row.names = FALSE)
-} else {
-  message("File already exists: ", file_path)
-}
-
-# get gene pair associations saved for all gene-hotspot associations
-file_path = paste0(
-  asys, 'association_summaries/all_gene_hotspots_assocations.csv')
-if (!file.exists(file_path)) {
-unfilteredHotspots = unfilteredAssocs[
-  unfilteredAssocs$marker %in% portedHotspots,] %>% select(-pairID) %>%
-  write.csv(file = file_path, row.names = FALSE)
-} else {
-  message("File already exists: ", file_path)
-}
-
-# remove file path and move on
-rm(file_path)
-
 ###################################################################
 # COMPARE THE PERMUTATION-BASED FDR APPROACH WITH PVAL ADJUSTMENT #
 ###################################################################
+
+# get the name and build the subfolder
+subsetDir = paste0(asys,'association_summaries_',scriptSet,'/')
+ensure_directory(subsetDir)
 
 # do BY-adjustment on p-values to discover hotpsots and then save
 testFrame = data.frame(
@@ -256,34 +287,33 @@ testFrame = data.frame(
 qHotspots = filter(testFrame, pBY < 0.05)
 qHotspots %>%
   separate(pairID, into = c("gene", "marker"), sep = "_", remove = FALSE) %>%
-  write.csv(,file=paste0(asys,'association_summaries/',
-                         'BY_adjusted_significant_hotspots.csv'),
-            row.names = FALSE)
+  write.csv(,file=paste0(
+    subsetDir,'BY_adjusted_significant_hotspots.csv'),
+    row.names = FALSE)
 
 # compare permutational discovery to p-value adjustment discovery
 compareMethodsFDR = as.data.frame(matrix(NA,ncol=2,nrow=3)) %>%
   `colnames<-`(c('genotype','interaction')) %>%
-  `rownames<-`(c('permutation','BY-adjustment','intersection')) 
+  `rownames<-`(c('permutation','BY-adjustment','intersection'))
 
-compareMethodsFDR['permutation', 'genotype'] = 
+compareMethodsFDR['permutation', 'genotype'] =
   length(jointHotspotQTLs$pairID[jointHotspotQTLs$flavor == 'geno'])
-compareMethodsFDR['BY-adjustment', 'genotype'] = 
+compareMethodsFDR['BY-adjustment', 'genotype'] =
   length(qHotspots$pairID[qHotspots$flavor == 'genotype'])
-compareMethodsFDR['intersection', 'genotype'] = 
+compareMethodsFDR['intersection', 'genotype'] =
   intersect(jointHotspotQTLs$pairID[jointHotspotQTLs$flavor == 'geno'],
             qHotspots$pairID[qHotspots$flavor == 'genotype']) %>% length()
 
-compareMethodsFDR['permutation', 'interaction'] = 
+compareMethodsFDR['permutation', 'interaction'] =
   length(jointHotspotQTLs$pairID[jointHotspotQTLs$flavor == 'ixn'])
-compareMethodsFDR['BY-adjustment', 'interaction'] = 
+compareMethodsFDR['BY-adjustment', 'interaction'] =
   length(qHotspots$pairID[qHotspots$flavor == 'interaction'])
-compareMethodsFDR['intersection', 'interaction'] = 
+compareMethodsFDR['intersection', 'interaction'] =
   intersect(jointHotspotQTLs$pairID[jointHotspotQTLs$flavor == 'ixn'],
             qHotspots$pairID[qHotspots$flavor == 'interaction']) %>% length()
 
-write.csv(compareMethodsFDR,
-          file=paste0(asys,'association_summaries/',
-                      "QTL_discovery_method_comparison.csv"))
+write.csv(compareMethodsFDR,file=paste0(
+  subsetDir,"QTL_discovery_method_comparison.csv"))
 
 rm(compareMethodsFDR, qHotspots, testFrame)
 
@@ -292,208 +322,262 @@ rm(compareMethodsFDR, qHotspots, testFrame)
 #####################
 
 top10ixn = jointHotspotQTLs %>%
-  filter(flavor == 'ixn') %>% select(-pairID, -flavor, -absolute_effect) %>%
-  arrange(desc(mlog10p)) %>% (function(x)x[1:10,]) %>% 
-  rename(`allelic effect` = effect) %>% rename(`p value` = p_value) %>%
-  rename(`minus log10(p)` = mlog10p)
-
-write.csv(top10ixn,paste0(asys,'association_summaries/',
-                          'top10_interaction_QTLs.csv'),row.names = FALSE)
-
-top10geno = jointHotspotQTLs %>%
-  filter(flavor == 'geno') %>% select(-pairID, -flavor, -absolute_effect) %>%
+  filter(flavor == 'ixn') %>% select(-pairID, -flavor) %>%
   arrange(desc(mlog10p)) %>% (function(x)x[1:10,]) %>%
   rename(`allelic effect` = effect) %>% rename(`p value` = p_value) %>%
   rename(`minus log10(p)` = mlog10p)
 
-write.csv(top10geno,paste0(asys,'association_summaries/',
-                           'top10_genotype_QTLs.csv'),row.names = FALSE)
+write.csv(top10ixn,paste0(
+  subsetDir,'top10_interaction_QTLs.csv'),row.names = FALSE)
 
-# create a disjoint barplot for the number of ixn QTLs discovered
-p = table(jointHotspotQTLs$marker[jointHotspotQTLs$flavor == 'ixn']) %>%
-  as.data.frame(stringsAsFactors = FALSE) %>%
-  rename(marker = Var1, count = Freq) %>%
+top10geno = jointHotspotQTLs %>%
+  filter(flavor == 'geno') %>% select(-pairID, -flavor) %>%
+  arrange(desc(mlog10p)) %>% (function(x)x[1:10,]) %>%
+  rename(`allelic effect` = effect) %>% rename(`p value` = p_value) %>%
+  rename(`minus log10(p)` = mlog10p)
+
+write.csv(top10geno,paste0(
+  subsetDir,'top10_genotype_QTLs.csv'),row.names = FALSE)
+
+# create a barplot for the number of ixn QTLs discovered
+p = jointHotspotQTLs %>%
+  filter(flavor == 'ixn') %>%
+  count(marker) %>%
   mutate(marker = gsub("chr", "", marker)) %>%
-  mutate(marker = factor(marker, levels = gsub("chr", "", names(
-    table(jointHotspotQTLs$marker[jointHotspotQTLs$flavor == 'ixn']))))) %>%
-  ggplot(aes(x = marker, y = count)) +
+  mutate(marker = factor(marker, levels = rev(gsub("chr", "", marker)))) %>%
+  ggplot(aes(y = marker, x = n)) +
   geom_bar(stat = "identity", color = "black", linewidth = 0.5) +
-  geom_text(aes(label = count), 
-            vjust = -0.2, 
-            color = "black", 
-            size = 4, 
-            fontface = "bold") +  
-  geom_hline(yintercept = 0, color = "black", linewidth = 0.5) + 
+  geom_text(aes(label = n),
+            color = "black",
+            size = 2.5,
+            fontface = "bold",
+            hjust = -0.2) +
+  geom_vline(xintercept = 0, color = "black", linewidth = 0.5) +
   theme_bw() +
-  scale_y_continuous(breaks = c(seq(0, 25, by = 5), 134)) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1, color = "black"),
-        axis.text.y = element_text(color = "black"),
+  scale_x_continuous() +
+  theme(axis.text.x = element_text(color = "black"),
+        axis.text.y = element_text(color = "black", size = 8),
         axis.title.x = element_text(color = "black"),
         axis.title.y = element_text(color = "black")) +
-  labs(x = "Marker", y = "Number of interaction QTLs observed")
+  labs(x = "Number of interaction QTLs observed", y = "Marker")
 
-ggsave(paste0(asys,'association_summaries/',
-              "interaction_QTL_barplot.pdf"), 
-       plot = p, width = 7.5, height = 5)
+# Save the plot with adjusted dimensions
+ggsave(paste0(subsetDir,"interaction_QTL_barplot.pdf"),
+       plot = p, width = 7.5, height = 10)
+
 
 rm(top10geno,top10ixn,p)
 
-########################################
-# EXPLORE PROTEIN AND MRNA DIFFERENCES #
-########################################
+############################################
+# EXPLORE DIFFERENCES IN INTERACTION CLASS #
+############################################
+
+subsetDir = paste0(asys,"difference_summaries_",scriptSet,"/")
 
 ixnPairQTLs = jointHotspotQTLs$pairID[jointHotspotQTLs$flavor == 'ixn']
 genoPairQTLs = jointHotspotQTLs$pairID[jointHotspotQTLs$flavor == 'geno']
 
 # split unfiltered associations into those that are ixn and geno QTLs
-isIxnQTL = unfilteredAssocs[unfilteredAssocs$pairID %in% ixnPairQTLs,] 
-isGenoQTL = unfilteredAssocs[unfilteredAssocs$pairID %in% genoPairQTLs,] 
+isIxnQTL = raAssocs[raAssocs$pairID %in% ixnPairQTLs,]
+isGenoQTL = raAssocs[raAssocs$pairID %in% genoPairQTLs,]
 
 # get summaries of mRNA and protein differences using different slices
 list(
-  unfilteredAssocs = unfilteredAssocs,
+  raAssocs = raAssocs,
   isIxnQTL = isIxnQTL,
   isGenoQTL = isGenoQTL
-) %>% `names<-`(c("All Associations", "Interaction QTLs", "Genotype QTLs")) %>% 
-  mpSummarizer(directory=paste0(asys,'mRNA_vs_protein_difference_summaries/'))
+) %>% `names<-`(c("All Associations", "Interaction QTLs", "Genotype QTLs")) %>%
+  mpSummarizer(directory=subsetDir,mode=scriptSet)
 
 # show differences within QTL classes using funfetti plots
-mpLinkPlotter(isGenoQTL, paste0(asys,"mRNA_vs_protein_difference_summaries/",
-                                "mRNA_vs_protein_genotype_QTLs.pdf"),"geno")
-mpLinkPlotter(isIxnQTL, paste0(asys,"mRNA_vs_protein_difference_summaries/",
-                               "mRNA_vs_protein_iteraction_QTLs.pdf"),"ixn")
-mpLinkPlotter(isIxnQTL %>% filter(marker != "chrXIV:465187"),
-              paste0(asys,"mRNA_vs_protein_difference_summaries/",
-                     "mRNA_vs_protein_iteraction_QTLs_no_MKT1.pdf"),"ixn")
+mpLinkPlotter(isGenoQTL, paste0(
+  subsetDir, "interaction_class_differences_genotype_QTLs.pdf"),
+  "geno", mode = scriptSet)
+mpLinkPlotter(isIxnQTL, paste0(
+  subsetDir, "interaction_class_differences_interaction_QTLs.pdf"),
+  "ixn", mode = scriptSet)
 
 # understand sign-flipping
 sign_flips_table = data.frame(
   Category = c("Sign Flips", "Total", "Fraction"),
   `Genotype QTLs` = c(
-    sum((isGenoQTL$mRNA.allelic_effect * 
+    sum((isGenoQTL$mRNA.allelic_effect *
            isGenoQTL$protein.allelic_effect) < 0),
     nrow(isGenoQTL),
-    sum((isGenoQTL$mRNA.allelic_effect * 
+    sum((isGenoQTL$mRNA.allelic_effect *
            isGenoQTL$protein.allelic_effect) < 0) / nrow(isGenoQTL)
   ),
   `Interaction QTLs` = c(
-    sum((isIxnQTL$mRNA.allelic_effect * 
+    sum((isIxnQTL$mRNA.allelic_effect *
            isIxnQTL$protein.allelic_effect) < 0),
     nrow(isIxnQTL),
-    sum((isIxnQTL$mRNA.allelic_effect * 
+    sum((isIxnQTL$mRNA.allelic_effect *
            isIxnQTL$protein.allelic_effect) < 0) / nrow(isIxnQTL)
   )
 ) %>% write.csv(
-  file=paste0(asys,"mRNA_vs_protein_difference_summaries/",
-              "sign_flip_counts.csv"),
+  file=paste0(subsetDir,"sign_flip_counts.csv"),
   row.names = FALSE)
 
 #################################
 # CLOSEST MARKER (CIS) ANALYSIS #
 #################################
 
-ensure_directory(paste0(asys,'proximal_analyses'))
+# Define directories based on scriptSet
+subsetDir = paste0(asys, "proximal_analyses_", scriptSet, "/")
+ensure_directory(subsetDir)
 
-# Subset the unfilteredAssocs dataframe by creating a pairID of closet pairs
-closeAssocs = unfilteredAssocs[
-  unfilteredAssocs$pairID %in% 
-    paste(closeMarkers$gene,
-          closeMarkers$marker, sep = "_"), ] %>%
+# Define variables to swap between mRNA/protein and SC/YNB2G
+if (scriptSet == "analyte") {
+  qval1 = "mRNA.qval"
+  qval2 = "protein.qval"
+  effect1 = "mRNA.allelic_effect"
+  effect2 = "protein.allelic_effect"
+  flavor1 = "mRNA"
+  flavor2 = "protein"
+  pval1 = "mRNA.pval"
+  pval2 = "protein.pval"
+} else {
+  qval1 = "SC.qval"
+  qval2 = "YNB2G.qval"
+  effect1 = "SC.allelic_effect"
+  effect2 = "YNB2G.allelic_effect"
+  flavor1 = "SC"
+  flavor2 = "YNB2G"
+  pval1 = "SC.pval"
+  pval2 = "YNB2G.pval"
+}
+
+# Subset the raAssocs dataframe by creating a pairID of close pairs
+closeAssocs = raAssocs[
+  raAssocs$pairID %in% paste(closeMarkers$gene, closeMarkers$marker, sep = "_"), 
+] %>%
   select(-matches("geno\\."))
 
-# get BY-adjusted qvals
+# Get BY-adjusted qvals
 closeAssocs = closeAssocs %>%
   mutate(
     ixn.qval = p.adjust(ixn.pval, method = "BY"),
-    protein.qval = p.adjust(protein.pval, method = "BY"),
-    mRNA.qval = p.adjust(mRNA.pval, method = "BY")
+    !!qval1 := p.adjust(get(pval1), method = "BY"),
+    !!qval2 := p.adjust(get(pval2), method = "BY")
   )
-
 
 # Filter and combine the data into one dataframe
 qNearQTLs = list(
   closeAssocs %>% filter(ixn.qval < 0.05) %>% mutate(flavor = "ixn"),
-  closeAssocs %>% filter(protein.qval < 0.05) %>% mutate(flavor = "protein"),
-  closeAssocs %>% filter(mRNA.qval < 0.05) %>% mutate(flavor = "mRNA")
+  closeAssocs %>% filter(!!sym(qval1) < 0.05) %>% mutate(flavor = flavor1),
+  closeAssocs %>% filter(!!sym(qval2) < 0.05) %>% mutate(flavor = flavor2)
 ) %>%
   bind_rows() %>%
   select(-pairID) %>%
   select(
     gene, marker,
-    ixn.allelic_effect, protein.allelic_effect, mRNA.allelic_effect,
-    ixn.qval, protein.qval, mRNA.qval,
+    ixn.allelic_effect, !!sym(effect1), !!sym(effect2),
+    ixn.qval, !!sym(qval1), !!sym(qval2),
     flavor
   ) %>%
   rename(
     effect_ixn = ixn.allelic_effect,
-    effect_protein = protein.allelic_effect,
-    effect_mRNA = mRNA.allelic_effect,
+    effect1 = !!sym(effect1),
+    effect2 = !!sym(effect2),
     qval_ixn = ixn.qval,
-    qval_protein = protein.qval,
-    qval_mRNA = mRNA.qval
+    qval1 = !!sym(qval1),
+    qval2 = !!sym(qval2)
   )
 
+# Replace variable names in rename function
+names(qNearQTLs) = sub("effect1", paste0("effect_", flavor1), names(qNearQTLs))
+names(qNearQTLs) = sub("effect2", paste0("effect_", flavor2), names(qNearQTLs))
+names(qNearQTLs) = sub("qval1", paste0("qval_", flavor1), names(qNearQTLs))
+names(qNearQTLs) = sub("qval2", paste0("qval_", flavor2), names(qNearQTLs))
+
 write.csv(qNearQTLs,row.names = FALSE,
-          file=paste0(asys,'proximal_analyses/',
-                      'nearest_gene_marker_QTLs.csv'))
+          file=paste0(subsetDir,'nearest_gene_marker_QTLs.csv'))
 
+padists = c(0, 5000, 10000, 100000, 1000000)
+
+# Loop over each flavor: "ixn" and "geno"
+for (flavor_type in c("ixn", "geno")) {
   
-# GET GRANGES THAT HOLD THE CLOSET (HOTSPOT) MARKER TO EACH GENE
-grHotspotQTLs = markRanger(jointHotspotQTLs$marker)
-
-# Order the subset to match the order of genes in jointHotspotQTLs$gene
-grGeneQTLs = grSupp[
-  match(jointHotspotQTLs$gene[jointHotspotQTLs$gene %in% grSupp$gene],
-        grSupp$gene)]
-
-# get number of QTLs within each padding
-c(0, 5e3, 1e4, 1e5, 1e6) %>%
-  setNames(nm = .) %>%  # Set the names of the vector to the distances
-  sapply(function(x) sum(padded_pintersect(grHotspotQTLs, grGeneQTLs, x)$hit)) %>%
-  enframe(name = "Distance (bp)", value = "Num proximal QTLs") %>%
-  mutate(`Distance (bp)` = as.numeric(`Distance (bp)`)) %>% 
-  write.csv(file = paste0(asys,'proximal_analyses/',
-                  'cis_QTLs_by_padding_distance.csv'),
-    row.names = FALSE)
+  # Filter jointHotspotQTLs to only include genes of the current flavor
+  filteredHotspotQTLs = jointHotspotQTLs %>% filter(flavor == flavor_type)
+  grHotspotQTLs = markRanger(filteredHotspotQTLs$marker)
+  mcols(grHotspotQTLs)$gene = filteredHotspotQTLs$gene
+  seqlevels(grHotspotQTLs) = seqlevels(grSupp)
   
-# get QTLs within 5k padding distance
-write.csv(jointHotspotQTLs[
-  padded_pintersect(grHotspotQTLs,grGeneQTLs,5e3)$hit,] %>%
-    select(-pairID, -absolute_effect),
-          file = paste0(asys,'proximal_analyses/',
-                        'cis_QTLs_by_5k_padding.csv'),
-  row.names = FALSE)
+  # Create the GRanges object for genes in the same order as filteredHotspotQTLs
+  grGeneQTLs = grSupp[match(filteredHotspotQTLs$gene, mcols(grSupp)$gene)]
+  
+  # Filter out pairs that are not on the same chromosome
+  same_chr_indices = as.logical(seqnames(grHotspotQTLs) == seqnames(grGeneQTLs))
+  grHotspotQTLs = grHotspotQTLs[same_chr_indices]
+  filteredHotspotQTLs = filteredHotspotQTLs[same_chr_indices,]
+  grGeneQTLs = grGeneQTLs[same_chr_indices]
+  
+  # Get the number of unique QTLs within each padding distance
+  padists %>%
+    sapply(function(x) {
+      hits = padded_pintersect(grHotspotQTLs, grGeneQTLs, x)
+      sum(hits)
+    }) %>%
+    enframe(name = "padding_distance", value = "cis_QTLs") %>%
+    mutate(padding_distance = padists) %>%
+    write.csv(file = paste0(subsetDir, "cisQTLs_by_padding_distance_", 
+                            flavor_type, ".csv"),
+              row.names = FALSE)
+  
+  filteredHotspotQTLs[
+    padded_pintersect(grHotspotQTLs, grGeneQTLs, 5000), ] %>% 
+    select(-pairID) %>% 
+    write.csv(file = paste0(subsetDir, 'cis_QTLs_by_5K_padding_',
+                            flavor_type, '.csv'), row.names = FALSE)
+  
+}
+
+rm(filteredHotspotQTLs, grHotspotQTLs, same_chr_indices, padists)
 
 ########################
 # GENETIC CORRELATIONS #
 ########################
 
-ensure_directory(paste0(asys,'genetic_correlations/'))
+# Define directories based on scriptSet
+subsetDir = paste0(asys, "genetic_correlations_", scriptSet, "/")
+ensure_directory(subsetDir)
 
-#CHECK FOR PER-GENE SYSTEMATIC NEGATIVE CORRELATION ACROSS HOTSPOTS
+# Define variables for allelic effect and p-values based on scriptSet
+if (scriptSet == "analyte") {
+  effect1 = "mRNA.allelic_effect"
+  effect2 = "protein.allelic_effect"
+  pval1 = "mRNA.pval"
+  pval2 = "protein.pval"
+} else {
+  effect1 = "SC.allelic_effect"
+  effect2 = "YNB2G.allelic_effect"
+  pval1 = "SC.pval"
+  pval2 = "YNB2G.pval"
+}
 
-# CALCULATE CORRELATIONS ACROSS HOTSPOTS PER GENE
-
+# Calculate genetic correlations for allelic effects
 hCorEffect = lapply(sort(unique(unfilteredHotspots$gene)), function(gene) {
-  cor.test(unfilteredHotspots[
-    unfilteredHotspots$gene == gene,]$mRNA.allelic_effect,
-           unfilteredHotspots[
-             unfilteredHotspots$gene == gene,]$protein.allelic_effect,
-           method = 'pearson')
+  cor.test(
+    unfilteredHotspots[unfilteredHotspots$gene == gene, ][[effect1]],
+    unfilteredHotspots[unfilteredHotspots$gene == gene, ][[effect2]],
+    method = 'pearson'
+  )
 }) %>% `names<-`(sort(unique(unfilteredHotspots$gene)))
 
+# Calculate genetic correlations for -log10(p-values)
 hCorLogP = lapply(sort(unique(unfilteredHotspots$gene)), function(gene) {
-  cor.test(-log10(unfilteredHotspots[
-    unfilteredHotspots$gene == gene,]$mRNA.pval),
-           -log10(unfilteredHotspots[
-             unfilteredHotspots$gene == gene,]$protein.pval),
-           method = 'pearson')
+  cor.test(
+    -log10(unfilteredHotspots[unfilteredHotspots$gene == gene, ][[pval1]]),
+    -log10(unfilteredHotspots[unfilteredHotspots$gene == gene, ][[pval2]]),
+    method = 'pearson'
+  )
 }) %>% `names<-`(sort(unique(unfilteredHotspots$gene)))
 
-# SHAPE THE DATA FOR EASY REPORTING
+# Process effect estimates
 hCE = list(
-  p = sapply(hCorEffect,function(x)x$p.value),
-  r = sapply(hCorEffect,function(x)x$estimate)
+  p = sapply(hCorEffect, function(x) x$p.value),
+  r = sapply(hCorEffect, function(x) x$estimate)
 ) %>% as.data.frame() %>%
   mutate(
     pBY = p.adjust(p, method = "BY"),
@@ -501,9 +585,10 @@ hCE = list(
   ) %>%
   rownames_to_column(var = "genes")
 
+# Process -log10(p-values)
 hCP = list(
-  p = sapply(hCorLogP,function(x)x$p.value),
-  r = sapply(hCorLogP,function(x)x$estimate)
+  p = sapply(hCorLogP, function(x) x$p.value),
+  r = sapply(hCorLogP, function(x) x$estimate)
 ) %>% as.data.frame() %>%
   mutate(
     pBY = p.adjust(p, method = "BY"),
@@ -511,18 +596,38 @@ hCP = list(
   ) %>%
   rownames_to_column(var = "genes")
 
+# Combine and sort the results
 hA = rbind(hCE, hCP) %>% arrange(genes)
 
-print('Are there any genes with significant negative correlatons...')
-print('Across hotspots for...')
-print('Effect values:')
-hA %>% filter(value == "effect_estimate", r < 0, pBY < 0.05)
-print('Locus significance:')
-hA %>% filter(value == "minus_log_10_p", r < 0, pBY < 0.05)
+# Filter and save results for significant negative correlations (if any)
 
-write.csv(hA,paste0(asys,'genetic_correlations/',
-  'genetic_correlations_full.csv'))
+# Effect values
+hA %>% 
+  filter(value == "effect_estimate", r < 0, pBY < 0.05) %>% 
+  (function(df) {
+    write.csv(
+      df, 
+      paste0(subsetDir, 'significant_effect_anticorrelated_genes.csv'), 
+      row.names = FALSE
+    )
+  })
 
+# Locus significance
+hA %>% 
+  filter(value == "minus_log10_p", r < 0, pBY < 0.05) %>% 
+  (function(df) {
+    write.csv(
+      df, 
+      paste0(subsetDir, 'significant_basis_anticorrelated_genes.csv'), 
+      row.names = FALSE
+    )
+  })
+
+# Save full results to CSV
+write.csv(hA, paste0(subsetDir, 'genetic_correlations_full.csv'),
+          row.names = FALSE)
+
+# Calculate and save summary statistics
 hA %>%
   group_by(value) %>%
   summarize(
@@ -537,13 +642,13 @@ hA %>%
     min_p = min(p),
     max_p = max(p)
   ) %>% 
-  write.csv(file=paste0(
-    asys,'genetic_correlations/',
-    'genetic_correlations_summaries.csv'))
+  write.csv(row.names = FALSE, file = 
+              paste0(subsetDir, 'genetic_correlations_summaries.csv'))
 
+# Create and save histogram plot
 p = ggplot(hA, aes(x = r, fill = value)) +
   geom_histogram(
-    aes(y = ..density..), 
+    aes(y = after_stat(density)), 
     position = "identity", 
     bins = 30, 
     color = "black",
@@ -555,9 +660,12 @@ p = ggplot(hA, aes(x = r, fill = value)) +
   ) +
   theme_bw() +
   theme(
-    text = element_text(color = "black"),
+    text = element_text(color = "black"), 
+    axis.title = element_text(color = "black"), 
+    axis.text = element_text(color = "black"), 
     legend.position = "bottom",
-    legend.title = element_blank()
+    legend.title = element_blank(),
+    plot.title = element_text(color = "black") 
   ) +
   labs(
     title = bquote(
@@ -568,72 +676,8 @@ p = ggplot(hA, aes(x = r, fill = value)) +
   ) +
   guides(fill = guide_legend(nrow = 1, byrow = TRUE))
 
-# Save the plot to a PDF file with specified dimensions
-ggsave(paste0(asys,'genetic_correlations/',
-              "genetic_correlations_histogram.pdf"),
+ggsave(paste0(subsetDir, "genetic_correlations_histogram.pdf"),
        plot = p, width = 7.5, height = 5)
 
-rm(hCorEffect,hCorLogP,hCE,hCP,hA,p)
-
-###############
-# TRACE PLOTS #
-###############
-
-# get signed -log10(p) traces for joint mappings
-unfilteredAssocs %>%
-  select(-starts_with("geno")) %>%
-  mutate(across(
-    .cols = all_of(paste0(c("analyte", "ixn", "protein", "mRNA"), ".pval")),
-    .fns = ~ -log10(.) * 
-      sign(get(sub(".pval$", ".allelic_effect", cur_column()))),
-    .names = "{sub('.pval$', '', .col)}.smltp"
-  )) %>%
-  rename_with(~ str_replace_all(., "ixn", "interaction")) %>%
-  rename_with(~ str_remove_all(., '.smltp')) %>%
-  select(-matches("\\.")) %>%
-  tracePlotter(valueType = 'smltp',
-               rootDir = paste0(asys,'joint_signed_-log10P_traces/'),
-               rootName = "joint_signed_-log10P_trace_for_",
-               plotWidth=7.5, plotHeight=2.5,
-               r = c("geno", "ixn"), 
-               n = c("genotype", "interaction"))
-
-# get allelic effect traces for joint mappings
-unfilteredAssocs %>%
-  select(-starts_with("geno")) %>%
-  rename_with(~ str_replace_all(., "ixn", "interaction")) %>%
-  rename_with(~ str_remove_all(., '.allelic_effect')) %>%
-  select(-matches("\\.")) %>% 
-  tracePlotter(valueType = 'Allelic effect',
-               rootDir = paste0(asys,'joint_effect_size_traces/'),
-               rootName = "joint_effect_trace_for_",
-               plotWidth=7.5, plotHeight=2.5,
-               r = c("geno", "ixn"), 
-               n = c("genotype", "interaction"))
-
-# prepare metdata for nice trace plotting
-exclusionMetadata = studyMetadata %>% mutate(study = gsub("_", " ", study)) %>%
-  mutate(analyte = ifelse(
-    study %in% c("Smith 2008 Ethanol", "Smith 2008 Glucose", "Albert 2018"),
-    "excluded", analyte)) %>%
-  mutate(analyte = factor(analyte, levels = c("mRNA", "protein", "excluded")))
-
-# run signed LOD traces on every supported gene
-studyTracer(studies = studies, 
-            smeta = exclusionMetadata,
-            suppGenes = doubleSupp, 
-            fn = paste0(asys, 'study_signed_LOD_traces'),
-            plotHeight = 5,
-            plotWidth = 7.5,
-            traceType = "s")
-
-# run signed R-value traces on every supported gene
-studyTracer(studies = studies, 
-            smeta = exclusionMetadata,
-            suppGenes = doubleSupp, 
-            fn = paste0(asys, 'study_R-value_traces'),
-            plotHeight = 5,
-            plotWidth = 7.5,
-            traceType = "r")
-
-rm(exclusionMetadata)
+# Clean up variables
+rm(hCorEffect, hCorLogP, hCE, hCP, hA, p)

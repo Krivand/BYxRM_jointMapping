@@ -87,6 +87,7 @@ print('Here are additional new hotspots')
 print(newHotspots)
 
 # get the indices of hotspots approximated in Grossbach-coordinates
+# in analyte we use all the hotspots since we are all Brem engineered
 gr_studies = markRanger(colnames(studies$Brem_2002$gdata))
 hotspots = readxl::read_excel(
   paste0(raw,'SI_Data_08_hotspotTableForPaper_topGenes100_170420.xlsx')) %>%
@@ -112,7 +113,8 @@ jointMarkerTest(
     suppGenes = doubleSupp,
     nPerms = 1000,
     FDR = 0.05,
-    fn = "joint_hotspot_QTLs",
+    fixedEffect = 'analyte',
+    fn = "hotspot_QTLs_analyte_05",
     correctBG = TRUE,
     correctGRM = FALSE,
     cores = detectCores(),

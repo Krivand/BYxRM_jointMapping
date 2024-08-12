@@ -70,6 +70,7 @@ rawAssocs(
     unionBg = unionBg,
     smetadata = scaMetadata,
     suppGenes = doubleSupp,
+    fixedEffect = 'analyte',
     fn = 'unfiltered_assocs',
     correctBG = TRUE,
     correctGRM = FALSE,

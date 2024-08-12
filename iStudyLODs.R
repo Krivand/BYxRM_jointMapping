@@ -11,7 +11,7 @@ names(studies) = classicMetadata$study
 # Detect the number of cores
 num_cores = detectCores()
 
-# Create gene_marker_associations_object and save it
+# Create gene_marker_associations_object and save it (LODS and Rs)
 gene_marker_associations = mclapply(
   studies,function(x)fasterLOD(n.pheno = nrow(x$pheno),
                                pheno.s = scale(x$pheno),
