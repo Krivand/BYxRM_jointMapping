@@ -10,7 +10,7 @@
 #######################################################
 
 # Define the library path
-personal_lib_path = "~/R/x86_64-pc-linux-gnu-library/4.4"
+personal_lib_path = "/data/gusev/ADQTL/envs/adqtl/lib/R/library"
 
 # Create the directory if it doesn't exist
 if (!dir.exists(personal_lib_path)) {
@@ -18,26 +18,48 @@ if (!dir.exists(personal_lib_path)) {
 }
 
 # Add the personal library path to the library paths
-.libPaths(c(personal_lib_path, .libPaths()))
+.libPaths(personal_lib_path)
 
 # Set the default CRAN mirror
-options(repos = c(CRAN = "https://lib.stat.cmu.edu/R/CRAN/"))
+options(repos = c(CRAN = "https://cloud.r-project.org"))
 
 # Install and use BiocManager if necessary
 if (!requireNamespace("BiocManager", quietly = TRUE)) {
   install.packages("BiocManager", lib = personal_lib_path, quietly = TRUE)
 }
 
+# # ANCHOR
+# # All package names
+# pkgs = c("broom.mixed", "GEOquery", "GenomicRanges", "gridExtra", "leaps", 
+#          "lme4", "lmerTest", "parallel", "patchwork", "pbapply", 
+#          "plyr", "progress", "readxl", "rrBLUP", "tidyverse", "viridis")
+
+# # Install using correct package installation tools
+# for (pkg in pkgs) {
+#   if (!require(pkg, character.only = TRUE, quietly = TRUE)) {
+#     message("Installing ", pkg, "...")
+#     if (pkg %in% c("GEOquery", "GenomicRanges")) {
+#       suppressMessages(BiocManager::install(
+#         pkg, lib = personal_lib_path, quietly = TRUE))
+#     } else {
+#       suppressMessages(install.packages(
+#         pkg, lib = personal_lib_path, quietly = TRUE))
+#     }
+#   } else {
+#     message(pkg, " is already installed.")
+#   }
+# }
+
 # All package names
-pkgs = c("broom.mixed", "GEOquery", "GenomicRanges", "gridExtra", "leaps", 
-         "lme4", "lmerTest", "parallel", "patchwork", "pbapply", 
-         "plyr", "progress", "readxl", "rrBLUP", "tidyverse", "viridis")
+pkgs = c("broom.mixed", "GenomicRanges", "gridExtra", "leaps", "lme4", "lmerTest",
+         "mashr", "parallel", "patchwork", "pbapply", "pbmcapply", "plyr", 
+         "progress", "RColorBrewer", "readxl", "rrBLUP", "tidyverse", "viridis")
 
 # Install using correct package installation tools
 for (pkg in pkgs) {
   if (!require(pkg, character.only = TRUE, quietly = TRUE)) {
     message("Installing ", pkg, "...")
-    if (pkg %in% c("GEOquery", "GenomicRanges")) {
+    if (pkg %in% c("GenomicRanges")) {
       suppressMessages(BiocManager::install(
         pkg, lib = personal_lib_path, quietly = TRUE))
     } else {
@@ -83,7 +105,7 @@ rm(pkgs)
 ##################################################
 
 # Prepare directories and set the working directory
-wd = "/home/albertf/vandy147/p05/"
+wd = "/PHShome/kv1026/p05/"
 raw = paste0(wd,"raw/")
 imed = paste0(wd,'imed/')
 asys = paste0(wd,'asys/')
@@ -96,9 +118,6 @@ for (dir in c(imed,asys,logs)) {
     dir.create(dir)
   }
 }
-
-# Choose a random seed for the script
-set.seed(464788913)
 
 # Load the universally used metadata object
 studyMetadata = read.delim(file=paste0(raw,'studyMetadata.csv'),
@@ -127,12 +146,92 @@ studyTypes = c("mRNA","mRNA","special","special",
                "protein","protein","protein",
                "mRNA","mRNA","protein","mRNA")
 
+studyNiceNames = c(
+  "Brem_2002" = "Brem 2002",
+  "Brem_2005" = "Brem 2005",
+  "SmithEth_2008" = "Smith 2008 (EtOH)",
+  "SmithGlc_2008" = "Smith 2008 (Glucose)",
+  "Khan_2009" = "Khan 2009",
+  "Foss_2011" = "Foss 2011",
+  "Picotti_2013" = "Picotti 2013",
+  "Albert_2018" = "Albert 2018",
+  "AlbertAlt_2018" = "Albert 2018 (Alt)",
+  "Albert_2014" = "Albert 2014",
+  "BrionRNA_2020" = "Brion 2020 (RNA)",
+  "BrionPRT_2020" = "Brion 2020 (Protein)",
+  "GrossbachRNA_2022" = "Grossbach 2022 (RNA)",
+  "GrossbachPRT_2022" = "Grossbach 2022 (Protein)"
+)
 # Threshold for NA removal
 threshNA = 0.25
+
+# Store original thread settings
+old_threads = Sys.getenv(
+  c("OMP_NUM_THREADS","OPENBLAS_NUM_THREADS","MKL_NUM_THREADS",
+    "VECLIB_MAXIMUM_THREADS","BLIS_NUM_THREADS"),
+  unset = NA
+)
+
+# Anlyte two color scheme
+colAnalyte = c(mRNA = "#191970", protein = "#EC5800")
 
 #########################
 # GENERAL FUNCTION BANK #
 #########################
+
+# create an integer seed from one or more strings
+seed_from = function(...) {
+  s = enc2utf8(paste(..., collapse = "|"))
+  if (requireNamespace("digest", quietly = TRUE)) {
+    hx = digest::digest(s, algo = "xxhash32", serialize = FALSE)   # 8 hex chars
+    out = suppressWarnings(strtoi(hx, base = 16L))
+    out = as.integer(out %% .Machine$integer.max)
+  } else {
+    # base-R fallback: rolling hash (no overflow), mod 2^31-1
+    u = utf8ToInt(s)
+    h = 0
+    for (i in seq_along(u)) {
+      h = (h * 131 + u[i]) %% 2147483647  # 2^31-1
+    }
+    out = as.integer(h)
+  }
+  if (is.na(out) || out == 0L) out = 1L   # set.seed() needs 1..2^31-1
+  out
+}
+
+# Respect explicit override via env or option; fall back to SLURM; then detectCores()
+get_cores = function(max_tasks = NULL) {
+  # explicit override first
+  opt = getOption("mapqtl.cores", NULL)
+  env = suppressWarnings(as.integer(Sys.getenv("MAPQTL_CORES", NA)))
+  if (!is.null(opt))           cores = as.integer(opt)
+  else if (!is.na(env))        cores = env
+  else {
+    slurm = suppressWarnings(as.integer(Sys.getenv("SLURM_CPUS_PER_TASK", NA)))
+    job   = suppressWarnings(as.integer(sub("\\D.*$", "", Sys.getenv("SLURM_JOB_CPUS_PER_NODE", ""))))
+    det   = parallel::detectCores()
+    cores = if (!is.na(slurm)) slurm else if (!is.na(job)) job else det
+  }
+  if (is.na(cores) || cores < 1L) cores = 1L
+  if (!is.null(max_tasks)) cores = min(cores, as.integer(max_tasks))
+  cores
+}
+
+# Functions to set single-threaded operation
+set_single_thread = function() {
+  Sys.setenv(OMP_NUM_THREADS="1", OPENBLAS_NUM_THREADS="1",
+             MKL_NUM_THREADS="1", VECLIB_MAXIMUM_THREADS="1",
+             BLIS_NUM_THREADS="1")
+}
+
+# Function to restore original thread settings
+restore_threads = function() {
+  nm = names(old_threads)
+  for (j in seq_along(nm)) {
+    if (is.na(old_threads[j])) Sys.unsetenv(nm[j])
+    else Sys.setenv(structure(old_threads[j], names = nm[j]))
+  }
+}
 
 # Negation of in
 `%nin%` = Negate(`%in%`)
@@ -342,8 +441,9 @@ cleanGDS = function(dir, filename, pat, naThreshold, feats, old = F, new = F) {
     strainKey$strain = gsub(old, new, strainKey$strain)
   }
   
-  datGDS = GEOquery::getGEO(filename = paste0(dir, filename)) %>%
-    GEOquery::Table()
+  # ANCHOR
+  # datGDS = GEOquery::getGEO(filename = paste0(dir, filename)) %>%
+  #   GEOquery::Table()
   
   # Normalize using the blanks
   datGDS[, 3:ncol(datGDS)] = apply(
@@ -778,6 +878,17 @@ fasterLOD = function(n.pheno, pheno.s,gdata.s, betas=FALSE, sdx=1, pheno=NULL){
   }
 }
 
+# faster p-value calculation
+# Adds non-numeric p-handling
+fasterP = function(n.pheno, pheno.s, gdata.s) {
+  r  = crossprod(pheno.s, gdata.s) / (n.pheno - 1)
+  df = n.pheno - 2
+  t  = r * sqrt(df / (1 - r^2))
+  p  = 2 * pt(-abs(t), df = df)
+  p[!is.finite(p)] = 1
+  return(p)
+}
+
 # Finds background QTLs
 # covariates is numeric and segregant by number of covariates
 # phenotype.raw is numeric with dim: segregants x number of traits 
@@ -938,11 +1049,31 @@ find.background.QTL = function(covariates, phenotype.raw, pheno.scaled, gdata,
 # gdata is an unscaled genotypes matrix (segregant x marker)
 # Elements are typically binary -1 or 1 coded genotypes but can be numeric
 # gdata.scaled is the scaled genotypes matrix
-mapQTL=function(covariates, background.QTL, phenotype.raw, pheno.scaled, 
-                gdata, gdata.scaled, 
-                chromosomes=NULL,
-                n.perm=1000, FDR.thresh=.05, Arandom=TRUE) {
-  
+mapQTL = function(covariates, background.QTL, phenotype.raw, pheno.scaled, 
+                  gdata, gdata.scaled, 
+                  chromosomes = NULL,
+                  n.perm = 1000, 
+                  FDR.thresh = 0.05, 
+                  Arandom = TRUE,
+                  chunk = 100L,
+                  seed = NULL) {
+
+  # time the entire function
+  t_all = proc.time()[["elapsed"]]
+  on.exit({
+    cat(sprintf("mapQTL: total elapsed = %.2f s\n",
+                proc.time()[["elapsed"]] - t_all))
+  }, add = TRUE)
+                  
+  # set the seed if provided
+  if (!is.null(seed)) {
+    set.seed(seed)
+    cat(sprintf("mapQTL: seed set to %d\n", seed))
+  }
+
+  # figure out how many cores you have
+  cores_total = get_cores()
+
   # If no chromosome is provided, default to the 16 yeast chromosomes
   if(is.null(chromosomes)) { chromosomes=paste0('chr', as.roman(1:16)) } 
   
@@ -964,7 +1095,7 @@ mapQTL=function(covariates, background.QTL, phenotype.raw, pheno.scaled,
   for(cc in chromosomes) {  
     
     # Tell us what chromosome we are on
-    print(cc) 
+    cat("Mapping:", cc, "\n")
     
     # Iterate over the genes in the phenotype matrix
     plist=lapply(colnames(phenotype.raw),function(i){ 
@@ -993,25 +1124,75 @@ mapQTL=function(covariates, background.QTL, phenotype.raw, pheno.scaled,
     presid = preal
     
     # Remove residual additive effect of genetics
-    if(Arandom) {
-      Aloco=rrBLUP::A.mat(
-        do.call('cbind',(gdata.by.chr[-match(cc, names(gdata.by.chr))])))/2
-      eigA=doEigenA_forMM(presid,Aloco)
-      svdAloco=svd(Aloco)
-      pb=txtProgressBar(min=1, max=ncol(presid), style=3)
-      for(tp in 1:ncol(presid)){
-        setTxtProgressBar(pb,tp)
-        rr=m.S(presid[,tp], K=Aloco,  theta=eigA$theta, Q=eigA$Q)
-        W=svdAloco$u %*% tcrossprod(diag(1/((svdAloco$d*rr[1])+(rr[2]))),
-                                    svdAloco$v)
-        if(rr[1]>0) {
-          blups=calc.BLUPS(rr[1]*Aloco,diag(nrow(presid)),
-                           W,presid[,tp],matrix(1,nrow(presid),1),0 )[,1]
-          presid[,tp]=as.vector(presid[,tp] - blups)
-        }
+    if (Arandom) {
+
+      Aloco = rrBLUP::A.mat(do.call('cbind', gdata.by.chr[-match(cc, names(gdata.by.chr))]))/2
+      eigA  = doEigenA_forMM(presid, Aloco)
+
+      # SVD/eigen basis for K
+      svdA = svd(Aloco)        # symmetric => eigenvectors in svd$u
+      U    = svdA$u
+      lam  = svdA$d
+
+      # Helper: (r1*K + r2*I)^{-1} y without forming W
+      solve_rr = function(y, r1, r2) {
+        Uy = crossprod(U, y)                 # t(U) %*% y
+        Uy = Uy / (r1 * lam + r2)            # elementwise
+        U %*% Uy                              # back to original space
       }
-      rm(W)
-      close(pb)
+
+      # Parallel over columns (cap by work size), keep workers single-threaded
+      ncoresMM = min(cores_total, ncol(presid))
+      mm_chunk = getOption("mapqtl.mm_chunk", 8L * ncoresMM)
+      mm_chunk = max(1L, min(mm_chunk, ncol(presid)))
+
+      set_single_thread()
+      on.exit(restore_threads(), add = TRUE)
+
+      p      = ncol(presid)
+      nbatch = ceiling(p / mm_chunk)
+      res_list = vector("list", p)
+
+      t0 = proc.time()[["elapsed"]]
+      for (b in seq_len(nbatch)) {
+        lo = (b - 1L) * mm_chunk + 1L
+        hi = min(b * mm_chunk, p)
+        cat(sprintf("%s: MM residualization batch %d/%d (cols %d–%d) using %d cores\n",
+                    cc, b, nbatch, lo, hi, ncoresMM))
+
+        tb = proc.time()[["elapsed"]]
+        res_b = parallel::mclapply(
+          lo:hi,
+          function(tp) {
+            y  = presid[, tp]
+            rr = m.S(y, K = Aloco, theta = eigA$theta, Q = eigA$Q)  # c(r1, r2)
+            if (rr[1] <= 0) return(y)
+            inv_y = solve_rr(y, r1 = rr[1], r2 = rr[2])
+            Uiny  = crossprod(U, inv_y)
+            Kiny  = U %*% (lam * Uiny)
+            as.vector(y - rr[1] * Kiny)
+          },
+          mc.cores = ncoresMM,
+          mc.set.seed = TRUE
+        )
+        res_list[lo:hi] = res_b
+        rm(res_b); gc()
+
+        # batch timing + ETA
+        elapsed_b = proc.time()[["elapsed"]] - tb
+        done = hi
+        elapsed_total = proc.time()[["elapsed"]] - t0
+        rate = done / max(1e-9, elapsed_total)           # cols/sec so far
+        remaining = p - done
+        eta = if (rate > 0) remaining / rate else NA_real_
+
+        cat(sprintf("%s: batch %d done in %.2f s; %.1f cols/sec; ETA %.1f s\n",
+                    cc, b, elapsed_b, rate, eta))
+      }
+
+      presid = do.call(cbind, res_list)
+      colnames(presid) = colnames(preal)
+      rownames(presid) = rownames(preal)
     }
     
     preal=presid
@@ -1036,17 +1217,80 @@ mapQTL=function(covariates, background.QTL, phenotype.raw, pheno.scaled,
       # We prepare the LOD permutation matrix
       permLOD=matrix(0, length(max.obsLOD), n.perm)
       
-      # Announce permutations and start progress bar
-      print('doing permutations')
-      pb = txtProgressBar(min = 1, max =n.perm, style = 3)
-      
-      # Loop for the number of permutations
-      for(i in 1:n.perm) {
-        setTxtProgressBar(pb, i)
-        permLOD[,i]=apply(fasterLOD(nrow(presid),presid[sample(nrow(presid)),],
-                                    gdata.s.by.chr[[cc]]),1,max)
-      }
-      close(pb)
+      # Announce permutations and time them
+      chunk = max(10L, as.integer(chunk))  # enforce lower bound first
+      cat(sprintf("%s: running %d permutations (FDR target = %.3f, chunk = %d)\n",
+            cc, n.perm, FDR.thresh, chunk))
+
+      t_perm = proc.time()
+
+      # --- SCOPE BLAS/OMP TO 1 THREAD ---
+      set_single_thread()
+      perm_elapsed = NA_real_
+
+      tryCatch({
+
+        # announce the number of cores we are using
+        cat(sprintf("%s: using %d cores\n", cc, cores_total))
+
+        permLOD = matrix(0, nrow = nrow(obsLOD$LOD), ncol = n.perm)
+
+        k = 1L
+        while (k <= n.perm) {
+          m = min(chunk, n.perm - k + 1L)
+
+          repeat {
+            # try parallel with current cores_total
+            res = try(
+              parallel::mclapply(
+                X = seq_len(m),
+                FUN = function(j) {
+                  ridx = sample.int(nrow(presid))
+                  apply(
+                    fasterLOD(nrow(presid), presid[ridx, , drop = FALSE], gdata.s.by.chr[[cc]]),
+                    1, max
+                  )
+                },
+                mc.cores    = cores_total,
+                mc.set.seed = TRUE
+              ),
+              silent = TRUE
+            )
+
+            if (!inherits(res, "try-error")) break  # success
+
+            # adaptive backoff: first reduce cores, then chunk
+            if (cores_total > 1L) {
+              cores_total = max(1L, cores_total %/% 2L)
+              message(sprintf("  batch failed; reducing cores to %d and retrying", cores_total))
+              next
+            }
+
+            if (m > 10L) {
+              # shrink chunk and recompute m for this batch
+              chunk = max(10L, m %/% 2L)
+              m = min(chunk, n.perm - k + 1L)
+              message(sprintf("  still failing at 1 core; reducing chunk to %d and retrying", chunk))
+              next
+            }
+
+            stop("Permutation chunk failed even at 1 core and minimal chunk size.")
+          }
+
+          permLOD[, k:(k + m - 1L)] = do.call(cbind, res)
+          cat(sprintf("  %d / %d permutations done (cores=%d, chunk=%d)\n", k + m - 1L, n.perm, cores_total, chunk))
+          k = k + m
+          rm(res); gc()
+        }
+
+        perm_elapsed = (proc.time() - t_perm)[["elapsed"]]
+        cat(sprintf("permutations finished in %.2f s (%.1f perms/sec)\n",
+            perm_elapsed, n.perm / perm_elapsed))
+
+      }, finally = {
+        # --- ALWAYS RESTORE THREADING RIGHT AFTER PERMS ---
+        restore_threads()
+      })
       
       # Check how many are above the iterated LOD threshold
       obsPcnt = sapply(seq(1.5,9,.05),
@@ -1130,90 +1374,94 @@ nrLOD = function(n, r){
 }
 
 # Wrapper for getting background QTLs
-findBackgroundQTLs = function(studies, fn, cores = 1) {
-  bgQTLs = mclapply(names(studies), function(study_name) {
+findBackgroundQTLs = function(studies, fn) {
+
+  bgQTLs = lapply(names(studies), function(study_name) {
     study = studies[[study_name]]
-    
-    if (!file.exists(paste0(fn, study_name, '_Background.rda'))) {
-      print(paste0("MAPPING BACKGROUND QTLs for ", study_name))
-      bgQTL = find.background.QTL(study$covars, 
-                                  study$pheno, 
+    rda_path = paste0(fn, study_name, "_Background.rda")
+    obj_name = paste0(study_name, "_Background")
+
+    if (!file.exists(rda_path)) {
+      cat(sprintf("MAPPING BACKGROUND QTLs for %s\n", study_name))
+      t0 = proc.time()[["elapsed"]]
+
+      bgQTL = find.background.QTL(study$covars,
+                                  study$pheno,
                                   scale(study$pheno),
                                   study$gdata,
                                   scale(study$gdata))
-      # Save the object with the correct name
-      assign(paste0(study_name, '_Background'), bgQTL)
-      save(list = paste0(study_name, '_Background'), 
-           file = paste0(fn, study_name, '_Background.rda'))
+
+      # Save
+      assign(obj_name, bgQTL)
+      save(list = obj_name, file = rda_path)
+
+      cat(sprintf("Finished mapping background QTLs for %s in %.2f s\n",
+                  study_name, proc.time()[["elapsed"]] - t0))
+
     } else {
-      print(paste0("LOADING BACKGROUND QTLs for ", study_name))
-      load(paste0(fn, study_name, '_Background.rda'))
-      bgQTL = get(paste0(study_name, '_Background'))
+      cat(sprintf("LOADING BACKGROUND QTLs for %s\n", study_name))
+      load(rda_path)
+      bgQTL = get(obj_name)
     }
-    
-    return(bgQTL)
-  }, mc.cores = cores)
-  
+
+    bgQTL
+  })
+
   names(bgQTLs) = names(studies)
-  return(bgQTLs)
+  bgQTLs
 }
 
 # Wrapper for mapping QTLs using Josh's pipeline over a list
-fullMap = function(studies, bgQTLs, fn, method = 'f', cores = 1) {
-  
-  # EXPLANATION OF MAPPING TYPES
-  # Full map (f): includes empirical null, pop struc crxn, background crxn
-  # Simple map (s): includes empirical null
-  
-  # Alter mapping type based on method
+fullMap = function(studies, bgQTLs, fn, method = 'f',
+                   n.perm = 1000, FDR.thresh = 0.05, chunk = 100L) {
+
+  # Mapping type
   if (method == 'f') {
-    typeRoot = '_fullPeaks'
-    popCrxn = TRUE
+    typeRoot = '_fullPeaks';  popCrxn = TRUE
   } else if (method == 's') {
-    typeRoot = '_simplePeaks'
-    popCrxn = FALSE
+    typeRoot = '_simplePeaks'; popCrxn = FALSE
   } else {
     warning('Invalid method selected. Choose f or s. Returning NULL')
     return(NULL)
   }
-  
-  # Perform QTL mapping for each study
-  qtlResults = mclapply(names(studies), function(study_name) {
+
+  # Sequential over studies; mapQTL handles internal parallelism
+  qtlResults = lapply(names(studies), function(study_name) {
     study = studies[[study_name]]
     background = if (method == 'f') bgQTLs[[study_name]] else list()
-    
-    # Check if results file exists
-    if (file.exists(paste0(fn, study_name, typeRoot, '.rda'))) {
-      print(paste0('Files already exist for ', study_name,
-                   ' using method ', method))
-      print('Loading files now...')
-      load(paste0(fn, study_name, typeRoot, '.rda'))
-      qtlResult = get(paste0(study_name, typeRoot))
-    } else {
-      print(paste0('Attempting to map QTLs for ', study_name,
-                   ' using method ', method))
-      
-      # Scan for QTLs
-      print("SCANNING FOR QTLS")
-      qtlResult = mapQTL(study$covars, 
-                         background,
-                         study$pheno, scale(study$pheno), 
-                         study$gdata, scale(study$gdata),
-                         n.perm = 1000, FDR.thresh = .05,
-                         Arandom = popCrxn)
-      
-      # Save results to file using list trick
-      assign(paste0(study_name, typeRoot), qtlResult)
-      save(list = paste0(study_name, typeRoot), 
-           file = paste0(fn, study_name, typeRoot, '.rda'))
+    rda_path = paste0(fn, study_name, typeRoot, '.rda')
+    obj_name = paste0(study_name, typeRoot)
+
+    if (file.exists(rda_path)) {
+      cat(sprintf("Files already exist for %s (%s). Loading...\n", study_name, method))
+      load(rda_path)
+      return(get(obj_name))
     }
-    
-    return(qtlResult)
-  }, mc.cores = cores)
-  
-  # Assign names to results and return
+
+    cat(sprintf("Mapping QTLs for %s (%s)...\n", study_name, method))
+    t0 = proc.time()[["elapsed"]]
+
+    qtlResult = mapQTL(study$covars,
+                       background,
+                       study$pheno, scale(study$pheno),
+                       study$gdata, scale(study$gdata),
+                       n.perm = n.perm,
+                       FDR.thresh = FDR.thresh,
+                       Arandom = popCrxn,
+                       chunk = chunk,
+                       seed = seed_from(study_name))   # <-- forward chunk
+
+    cat(sprintf("Finished mapping QTLs for %s in %.2f s\n", 
+                study_name, proc.time()[["elapsed"]] - t0))
+
+
+    assign(obj_name, qtlResult)
+    save(list = obj_name, file = rda_path)
+    qtlResult
+  })
+
   names(qtlResults) = names(studies)
-  return(qtlResults)
+  qtlResults
 }
 
 ############################
@@ -1614,6 +1862,365 @@ jointMarkerTest = function(studies, targetMarkers, unionBg, smetadata,
     return(paste('Finished', marker))
     
   })
+}
+
+# jointMarker FDR
+jointMarkerFDR = function(studies, targetMarkers, unionBg, smetadata,
+                          suppGenes, FDR, fixedEffect = NULL, fn,
+                          dropLOD = 1.5,
+                          correctBG = FALSE, correctGRM = FALSE,
+                          cores = 1, chromosomes = NULL) {
+
+  message("PREPARING MAPPING OBJECTS AND DEALING WITH GENE SUPPORT")
+
+  outPath = paste0(imed, fn, "/")
+  if (!dir.exists(outPath)) dir.create(outPath, showWarnings = TRUE, recursive = FALSE)
+
+  trueMarkers = colnames(studies[[1]]$gdata)
+  if (is.null(chromosomes)) chromosomes = paste0("chr", as.roman(1:16))
+
+  # which studies support each gene
+  suppList = lapply(suppGenes, function(gene) {
+    studies_containing_gene = sapply(smetadata$genes, function(gene_list) gene %in% gene_list)
+    smetadata$study[studies_containing_gene]
+  }) %>% `names<-`(suppGenes)
+
+  uqCombos = unique(suppList)
+  uqKey = match(suppList, uqCombos)
+
+  # base long metadata
+  baseLongMeta =
+    mapply(function(x, y) rep(y, nrow(x$gdata)), studies, names(studies)) %>%
+    unlist() %>% unname() %>% as.data.frame() %>%
+    `names<-`("study")
+
+  if (!is.null(fixedEffect)) {
+    baseLongMeta = baseLongMeta %>%
+      left_join(smetadata %>% dplyr::select(study, all_of(fixedEffect)), by = "study")
+  }
+
+  baseLongMeta = baseLongMeta %>% mutate(geno = NA)
+
+  longMeta = lapply(uqCombos, function(combo) baseLongMeta %>% dplyr::filter(study %in% combo))
+
+  jointGeno = lapply(uqCombos, function(combo) {
+    names(studies) %>%
+      .[. %in% combo] %>%
+      lapply(function(study_name) studies[[study_name]]$gdata) %>%
+      do.call(rbind, .)
+  })
+
+  # chrom key for markers
+  ct = do.call("rbind", strsplit(targetMarkers, ":"))[, 1]
+
+  # phenotype matrices, replicated across chromosomes
+  jointPhenoScaled = lapply(suppGenes, function(gene) {
+    pheno_values = unlist(lapply(suppList[[gene]], function(studyName) {
+      if (studyName %in% names(studies)) {
+        st = studies[[studyName]]
+        if (gene %in% colnames(st$pclean)) return(st$pclean[, gene])
+      }
+      NULL
+    }))
+
+    if (!is.null(pheno_values)) {
+      pheno_matrix = matrix(rep(pheno_values, length(chromosomes)),
+                            ncol = length(chromosomes), byrow = FALSE)
+      colnames(pheno_matrix) = chromosomes
+      rownames(pheno_matrix) = names(pheno_values)
+      pheno_matrix
+    } else {
+      NULL
+    }
+  }) %>% `names<-`(names(suppList))
+
+  if (correctBG) {
+    message("CORRECTING FOR STRONG GENETIC EFFECTS ON OTHER CHROMOSOMES")
+    pb = txtProgressBar(min = 0, max = length(uqKey), style = 3)
+    jointPhenoScaled = mapply(function(key, pheno, index) {
+      out = adjust_for_background_QTLs(jointGeno[[key]], pheno, unionBg, chromosomes)
+      setTxtProgressBar(pb, index)
+      out
+    }, uqKey, jointPhenoScaled, seq_along(uqKey), SIMPLIFY = FALSE)
+    close(pb); cat("\n")
+  }
+
+  if (correctGRM) {
+    message("CORRECTING FOR RELATEDNESS ON OTHER CHROMOSOMES")
+    pb = txtProgressBar(min = 0, max = length(uqKey), style = 3)
+    jointPhenoScaled = mapply(function(key, pheno, index) {
+      out = calculate_BLUPs(jointGeno[[key]], pheno)
+      setTxtProgressBar(pb, index)
+      out
+    }, uqKey, jointPhenoScaled, seq_along(uqKey), SIMPLIFY = FALSE)
+    close(pb); cat("\n")
+  }
+
+  jointGeno = lapply(jointGeno, scale)
+
+  mapMode = if (is.null(fixedEffect)) "genotype" else "interaction"
+
+  # final assoc container (single flavor per run)
+  fassocs = data.frame(
+    gene       = character(),
+    marker     = character(),  # peak marker
+    flavor     = character(),  # "genotype" or "interaction"
+    effect     = numeric(),
+    p_value    = numeric(),
+    samplesize = numeric(),
+    mlog10p    = numeric(),
+    LOD        = numeric(),
+    LEFT       = character(),
+    RIGHT      = character(),
+    BH         = numeric(),
+    pass       = integer(),
+    stringsAsFactors = FALSE
+  )
+
+  message("BEGINNING JOINT QTL MAPPING WITH BH-FDR AND MULTIPLE PASSES")
+
+  # helper: compute wings for one gene using LOD curve of THIS PASS
+  compute_wings = function(gene, peak_marker, peak_LOD, pass_df, ct_vec) {
+    idx_peak = match(peak_marker, targetMarkers)
+    chr_peak = ct_vec[idx_peak]
+
+    chr_idx = which(ct_vec == chr_peak)
+    chr_idx = chr_idx[order(chr_idx)]
+    pos = match(idx_peak, chr_idx)
+
+    thr = peak_LOD - dropLOD
+
+    # left
+    left_pos = pos
+    while (left_pos > 1) {
+      cand_idx = chr_idx[left_pos - 1]
+      cand_marker = targetMarkers[cand_idx]
+      cand_LOD = pass_df$LOD[pass_df$gene == gene & pass_df$marker == cand_marker][1]
+      if (is.na(cand_LOD) || cand_LOD < thr) break
+      left_pos = left_pos - 1
+    }
+    LEFT = targetMarkers[chr_idx[left_pos]]
+
+    # right
+    right_pos = pos
+    while (right_pos < length(chr_idx)) {
+      cand_idx = chr_idx[right_pos + 1]
+      cand_marker = targetMarkers[cand_idx]
+      cand_LOD = pass_df$LOD[pass_df$gene == gene & pass_df$marker == cand_marker][1]
+      if (is.na(cand_LOD) || cand_LOD < thr) break
+      right_pos = right_pos + 1
+    }
+    RIGHT = targetMarkers[chr_idx[right_pos]]
+
+    list(LEFT = LEFT, RIGHT = RIGHT)
+  }
+
+  nGenes   = length(suppGenes)
+  nMarkers = length(targetMarkers)
+
+  pass = 1
+
+  repeat {
+
+    message(paste0("--- PASS ", pass, " (", mapMode, ") ---"))
+
+    # -----------------------------
+    # PREALLOCATE PER-PASS RESULTS
+    # -----------------------------
+    nRows = nGenes * nMarkers
+
+    gene_vec   = rep(suppGenes, times = nMarkers)
+    marker_vec = rep(targetMarkers, each  = nGenes)
+    pass_vec   = rep(pass, nRows)
+    flavor_vec = rep(mapMode, nRows)
+
+    effect_vec     = rep(NA_real_, nRows)
+    pval_vec       = rep(NA_real_, nRows)
+    n_vec          = rep(NA_real_, nRows)
+    mlog10p_vec    = rep(NA_real_, nRows)
+    lod_vec        = rep(NA_real_, nRows)
+
+    pb_pass = txtProgressBar(min = 0, max = nMarkers, style = 3)
+
+    for (mI in seq_along(targetMarkers)) {
+
+      marker = targetMarkers[mI]
+
+      # per marker, per unique combo metadata (geno changes with marker; study/fixedEffect constant)
+      perMeta = mapply(function(g, m) {
+        df = data.frame(
+          study = m$study,
+          geno  = g[, marker],
+          pheno = rep(NA, length(m$study))
+        )
+        if (!is.null(fixedEffect)) df[[fixedEffect]] = m[[fixedEffect]]
+        df
+      }, jointGeno, longMeta, SIMPLIFY = FALSE)
+
+      # build formulas once per marker
+      if (is.null(fixedEffect)) {
+        f0 = as.formula("pheno ~ (1|study)")
+        f1 = as.formula("pheno ~ (1|study) + geno")
+      } else {
+        f0 = as.formula(paste0("pheno ~ (1|study) + ", fixedEffect, " + geno"))
+        f1 = as.formula(paste0("pheno ~ (1|study) + ", fixedEffect, " + geno + geno:", fixedEffect))
+      }
+
+      ctrl = lmerControl(check.conv.singular = "ignore")
+
+      run_one_gene = function(g) {
+        perMeta_g = perMeta[[uqKey[g]]]
+        perMeta_g$pheno = jointPhenoScaled[[g]][, ct[mI]]
+
+        m0 = lmer(f0, data = perMeta_g, control = ctrl, REML = FALSE)
+        m1 = lmer(f1, data = perMeta_g, control = ctrl, REML = FALSE)
+
+        ll0 = as.numeric(logLik(m0))
+        ll1 = as.numeric(logLik(m1))
+        lod = (ll1 - ll0) / log(10)
+
+        # LRT p-value for m1 vs m0
+        pval = anova(m0, m1)[2, "Pr(>Chisq)"]
+
+        fx = fixef(m1)
+        eff =
+          if (is.null(fixedEffect)) {
+            unname(fx["geno"])
+          } else {
+            ixn_terms = grep("geno:", names(fx), value = TRUE)
+            if (length(ixn_terms) == 0) ixn_terms = grep(":geno", names(fx), value = TRUE)
+            ixn_terms = unique(ixn_terms)
+
+            if (length(ixn_terms) == 1) {
+              unname(fx[ixn_terms])
+            } else if (length(ixn_terms) > 1) {
+              max(abs(unname(fx[ixn_terms])))
+            } else {
+              NA_real_
+            }
+          }
+
+        list(
+          effect     = eff,
+          p_value    = pval,
+          samplesize = nrow(perMeta_g),
+          mlog10p    = -log10(pval),
+          LOD        = lod
+        )
+      }
+
+      gene_out =
+        if (cores > 1) parallel::mclapply(seq_len(nGenes), run_one_gene, mc.cores = cores)
+        else lapply(seq_len(nGenes), run_one_gene)
+
+      # fill preallocated vectors for this marker block
+      block_start = (mI - 1) * nGenes + 1
+      block_end   = mI * nGenes
+      idx_block   = block_start:block_end
+
+      effect_vec[idx_block]  = vapply(gene_out, `[[`, numeric(1), "effect")
+      pval_vec[idx_block]    = vapply(gene_out, `[[`, numeric(1), "p_value")
+      n_vec[idx_block]       = vapply(gene_out, `[[`, numeric(1), "samplesize")
+      mlog10p_vec[idx_block] = vapply(gene_out, `[[`, numeric(1), "mlog10p")
+      lod_vec[idx_block]     = vapply(gene_out, `[[`, numeric(1), "LOD")
+
+      setTxtProgressBar(pb_pass, mI)
+    }
+
+    close(pb_pass); cat("\n")
+
+    # build per-pass df once
+    passRassocs = data.frame(
+      gene       = gene_vec,
+      marker     = marker_vec,
+      flavor     = flavor_vec,
+      effect     = effect_vec,
+      p_value    = pval_vec,
+      samplesize = n_vec,
+      mlog10p    = mlog10p_vec,
+      LOD        = lod_vec,
+      BH         = NA_real_,
+      pass       = pass_vec,
+      stringsAsFactors = FALSE
+    )
+
+    passRassocs$BH = p.adjust(passRassocs$p_value, method = "BH")
+
+    sig_hits = passRassocs %>% dplyr::filter(!is.na(BH) & BH <= FDR)
+
+    if (nrow(sig_hits) == 0) {
+      message(paste0("No BH-significant QTLs at FDR ", FDR, " in pass ", pass, "; stopping."))
+      break
+    }
+
+    # one QTL per gene per pass: choose smallest p-value (peak)
+    best_hits = sig_hits %>%
+      dplyr::group_by(gene) %>%
+      dplyr::slice_min(order_by = p_value, n = 1, with_ties = FALSE) %>%
+      dplyr::ungroup()
+
+    wings = lapply(seq_len(nrow(best_hits)), function(i) {
+      g = best_hits$gene[i]
+      peak = best_hits$marker[i]
+      peakLOD = best_hits$LOD[i]
+      compute_wings(gene = g, peak_marker = peak, peak_LOD = peakLOD,
+                    pass_df = passRassocs, ct_vec = ct)
+    })
+
+    best_hits$LEFT  = vapply(wings, function(x) x$LEFT,  character(1))
+    best_hits$RIGHT = vapply(wings, function(x) x$RIGHT, character(1))
+
+    message(paste0("PASS ", pass, ": discovered ",
+                   nrow(best_hits), " QTL(s) across ",
+                   length(unique(best_hits$gene)), " gene(s)."))
+
+    fassocs = rbind(fassocs, best_hits %>% dplyr::select(names(fassocs)))
+
+    # residualize winners using the m1 model for this mode
+    for (i in seq_len(nrow(best_hits))) {
+
+      gene_i   = best_hits$gene[i]
+      marker_i = best_hits$marker[i]
+
+      g_index = which(suppGenes == gene_i)
+      key     = uqKey[g_index]
+
+      base_meta = longMeta[[key]]
+      geno_vec  = jointGeno[[key]][, marker_i]
+      pheno_vec = jointPhenoScaled[[g_index]][, 1]
+
+      df = data.frame(
+        study = base_meta$study,
+        geno  = geno_vec,
+        pheno = pheno_vec
+      )
+      if (!is.null(fixedEffect)) df[[fixedEffect]] = base_meta[[fixedEffect]]
+
+      if (is.null(fixedEffect)) {
+        f1 = as.formula("pheno ~ (1|study) + geno")
+      } else {
+        f1 = as.formula(paste0("pheno ~ (1|study) + ", fixedEffect, " + geno + geno:", fixedEffect))
+      }
+
+      qtlModel = lmer(f1, data = df,
+                      control = lmerControl(check.conv.singular = "ignore"),
+                      REML = FALSE)
+
+      resid_vec = resid(qtlModel)
+
+      rn = rownames(jointPhenoScaled[[g_index]])
+      jointPhenoScaled[[g_index]] =
+        matrix(rep(resid_vec, length(chromosomes)),
+               ncol = length(chromosomes), byrow = FALSE,
+               dimnames = list(rn, chromosomes))
+    }
+
+    pass = pass + 1
+  }
+
+  out = list()
+  out[[mapMode]] = fassocs
+  out
 }
 
 # Performs assocation tests between all markers and genes 
@@ -2458,6 +3065,697 @@ mpLinkPlotter = function(data, filename, infix, mode, r = NULL, n = NULL) {
   # Save the combined plot
   ggsave(paste0(plot_subdir, "/all_markers.pdf"), 
          plot = p_combined, width = 7.5, height = 5)
+}
+
+# --- DRILL: now also stores p-values (LRT like your mapper) -------------------
+drillQTL = function(studies,
+                    dfQTL,
+                    unionBg,
+                    smetadata,
+                    suppGenes,
+                    fixedEffect = NULL,
+                    correctBG = FALSE,
+                    correctGRM = FALSE,
+                    cores = 1,
+                    chromosomes = NULL) {
+
+  stopifnot(is.list(studies), length(studies) >= 1)
+  stopifnot(is.data.frame(dfQTL))
+  stopifnot(all(c("gene", "marker") %in% colnames(dfQTL)))
+
+  if (!requireNamespace("lme4", quietly = TRUE)) stop("Package 'lme4' is required.")
+  if (!requireNamespace("dplyr", quietly = TRUE)) stop("Package 'dplyr' is required.")
+
+  dfQTL$gene   = as.character(dfQTL$gene)
+  dfQTL$marker = as.character(dfQTL$marker)
+
+  if (is.null(chromosomes)) chromosomes = paste0("chr", as.roman(1:16))
+
+  if (!is.null(suppGenes)) {
+    suppGenes = as.character(suppGenes)
+    dfQTL = dfQTL[dfQTL$gene %in% suppGenes, , drop = FALSE]
+  }
+  if (nrow(dfQTL) == 0) return(list())
+
+  trueMarkers = colnames(studies[[1]]$gdata)
+  keep_pairs = dfQTL$marker %in% trueMarkers
+  if (!all(keep_pairs)) {
+    missing_markers = unique(dfQTL$marker[!keep_pairs])
+    warning("Dropping ", sum(!keep_pairs),
+            " QTL rows whose marker is not in gdata. Example: ",
+            paste(head(missing_markers, 3), collapse = ", "))
+    dfQTL = dfQTL[keep_pairs, , drop = FALSE]
+  }
+  if (nrow(dfQTL) == 0) return(list())
+
+  suppGenes_use = unique(dfQTL$gene)
+
+  suppList = lapply(suppGenes_use, function(gene) {
+    studies_containing_gene =
+      sapply(smetadata$genes, function(gene_list) gene %in% gene_list)
+    smetadata$study[studies_containing_gene]
+  })
+  names(suppList) = suppGenes_use
+
+  uqCombos = unique(suppList)
+  uqKey = match(suppList, uqCombos)
+
+  baseLongMeta =
+    mapply(function(x, y) rep(y, nrow(x$gdata)), studies, names(studies)) |>
+    unlist(use.names = FALSE) |>
+    data.frame(study = _, stringsAsFactors = FALSE)
+
+  if (!is.null(fixedEffect)) {
+    if (!fixedEffect %in% colnames(smetadata)) {
+      stop("fixedEffect '", fixedEffect, "' is not a column in smetadata.")
+    }
+    baseLongMeta =
+      dplyr::left_join(
+        baseLongMeta,
+        smetadata |> dplyr::select(study, dplyr::all_of(fixedEffect)),
+        by = "study"
+      )
+  }
+
+  baseLongMeta$geno  = NA_real_
+  baseLongMeta$pheno = NA_real_
+
+  longMeta = lapply(uqCombos, function(combo) {
+    baseLongMeta |> dplyr::filter(study %in% combo)
+  })
+
+  jointGeno = lapply(uqCombos, function(combo) {
+    st_names = names(studies)[names(studies) %in% combo]
+    mats = lapply(st_names, function(study_name) studies[[study_name]]$gdata)
+    do.call(rbind, mats)
+  })
+
+  jointPhenoScaled = lapply(suppGenes_use, function(gene) {
+    pheno_values = unlist(lapply(suppList[[gene]], function(studyName) {
+      if (!studyName %in% names(studies)) return(NULL)
+      st = studies[[studyName]]
+      if (!gene %in% colnames(st$pclean)) return(NULL)
+      st$pclean[, gene]
+    }))
+    if (length(pheno_values) == 0) return(NULL)
+
+    mat = matrix(rep(pheno_values, length(chromosomes)),
+                 ncol = length(chromosomes), byrow = FALSE)
+    colnames(mat) = chromosomes
+    rownames(mat) = names(pheno_values)
+    mat
+  })
+  names(jointPhenoScaled) = suppGenes_use
+
+  ok_gene = !vapply(jointPhenoScaled, is.null, logical(1))
+  if (!all(ok_gene)) {
+    dropped = names(jointPhenoScaled)[!ok_gene]
+    warning("Dropping ", sum(!ok_gene),
+            " genes with no phenotype values. Example: ",
+            paste(head(dropped, 3), collapse = ", "))
+    jointPhenoScaled = jointPhenoScaled[ok_gene]
+    suppGenes_use = names(jointPhenoScaled)
+    suppList = suppList[suppGenes_use]
+    uqCombos = unique(suppList)
+    uqKey = match(suppList, uqCombos)
+
+    longMeta = lapply(uqCombos, function(combo) {
+      baseLongMeta |> dplyr::filter(study %in% combo)
+    })
+    jointGeno = lapply(uqCombos, function(combo) {
+      st_names = names(studies)[names(studies) %in% combo]
+      mats = lapply(st_names, function(study_name) studies[[study_name]]$gdata)
+      do.call(rbind, mats)
+    })
+  }
+
+  if (correctBG) {
+    if (!exists("adjust_for_background_QTLs", mode = "function")) {
+      stop("correctBG=TRUE but adjust_for_background_QTLs() is not found.")
+    }
+    message("CORRECTING FOR STRONG GENETIC EFFECTS ON OTHER CHROMOSOMES")
+    pb = txtProgressBar(min = 0, max = length(uqKey), style = 3)
+    jointPhenoScaled = mapply(function(key, pheno, index) {
+      out = adjust_for_background_QTLs(jointGeno[[key]], pheno, unionBg, chromosomes)
+      out = as.matrix(out)
+      if (ncol(out) == length(chromosomes)) colnames(out) = chromosomes
+      setTxtProgressBar(pb, index)
+      out
+    }, uqKey, jointPhenoScaled, seq_along(uqKey), SIMPLIFY = FALSE)
+    close(pb); cat("\n")
+  }
+
+  if (correctGRM) {
+    if (!exists("calculate_BLUPs", mode = "function")) {
+      stop("correctGRM=TRUE but calculate_BLUPs() is not found.")
+    }
+    message("CORRECTING FOR RELATEDNESS ON OTHER CHROMOSOMES")
+    pb = txtProgressBar(min = 0, max = length(uqKey), style = 3)
+    jointPhenoScaled = mapply(function(key, pheno, index) {
+      out = calculate_BLUPs(jointGeno[[key]], pheno)
+      out = as.matrix(out)
+      if (ncol(out) == length(chromosomes)) colnames(out) = chromosomes
+      setTxtProgressBar(pb, index)
+      out
+    }, uqKey, jointPhenoScaled, seq_along(uqKey), SIMPLIFY = FALSE)
+    close(pb); cat("\n")
+  }
+
+  jointGeno = lapply(jointGeno, scale)
+
+  fixed_levels = NULL
+  if (!is.null(fixedEffect)) {
+    fixed_levels = sort(unique(as.character(baseLongMeta[[fixedEffect]])))
+    fixed_levels = fixed_levels[!is.na(fixed_levels)]
+  }
+
+  ctrl = lme4::lmerControl(check.conv.singular = "ignore")
+
+  f0_geno = as.formula("pheno ~ (1|study)")
+  f1_geno = as.formula("pheno ~ (1|study) + geno")
+
+  f0_int = NULL
+  f1_int = NULL
+  if (!is.null(fixedEffect)) {
+    f0_int = as.formula(paste0("pheno ~ (1|study) + ", fixedEffect, " + geno"))
+    f1_int = as.formula(paste0("pheno ~ (1|study) + ", fixedEffect, " + geno + geno:", fixedEffect))
+  }
+
+  dfPairs = unique(dfQTL[dfQTL$gene %in% suppGenes_use, c("gene", "marker"), drop = FALSE])
+  if (nrow(dfPairs) == 0) return(list())
+
+  fit_one_pair = function(gene, marker) {
+    g_index = match(gene, suppGenes_use)
+    if (is.na(g_index)) return(list(gene = gene, marker = marker, error = "gene_not_in_suppGenes_use"))
+    key = uqKey[g_index]
+
+    base_meta = longMeta[[key]]
+
+    if (!marker %in% colnames(jointGeno[[key]])) {
+      return(list(gene = gene, marker = marker, error = "marker_not_in_jointGeno"))
+    }
+
+    chr = strsplit(marker, ":", fixed = TRUE)[[1]][1]
+    chr_idx = match(chr, chromosomes)
+    if (is.na(chr_idx)) return(list(gene = gene, marker = marker, error = paste0("bad_chr: ", chr)))
+
+    ph = jointPhenoScaled[[g_index]]
+    if (is.null(ph)) return(list(gene = gene, marker = marker, error = "pheno_is_NULL"))
+
+    ph = as.matrix(ph)
+    if (ncol(ph) < chr_idx) {
+      return(list(gene = gene, marker = marker, error = paste0("pheno_has_only_", ncol(ph), "_cols")))
+    }
+
+    df = base_meta
+    df$geno  = jointGeno[[key]][, marker]
+    df$pheno = ph[, chr_idx]
+
+    out = list(gene = gene, marker = marker)
+
+    # GENO model + pval (LRT)
+    m0 = lme4::lmer(f0_geno, data = df, control = ctrl, REML = FALSE)
+    m1 = lme4::lmer(f1_geno, data = df, control = ctrl, REML = FALSE)
+    out$geno = m1
+    out$geno_pval = tryCatch(stats::anova(m0, m1)[2, "Pr(>Chisq)"], error = function(e) NA_real_)
+
+    # INTERACTION model + pval (LRT)
+    if (!is.null(fixedEffect)) {
+      m_main = lme4::lmer(f0_int, data = df, control = ctrl, REML = FALSE)
+      m_int  = lme4::lmer(f1_int, data = df, control = ctrl, REML = FALSE)
+      out$interaction = m_int
+      out$interaction_pval = tryCatch(stats::anova(m_main, m_int)[2, "Pr(>Chisq)"], error = function(e) NA_real_)
+
+      # per-level subset geno models + pvals (LRT within subset)
+      for (lv in fixed_levels) {
+        df_sub = df[as.character(df[[fixedEffect]]) == lv, , drop = FALSE]
+        if (nrow(df_sub) < 5) {
+          out[[lv]] = NULL
+          out[[paste0(lv, "_pval")]] = NA_real_
+        } else {
+          m0s = lme4::lmer(f0_geno, data = df_sub, control = ctrl, REML = FALSE)
+          m1s = lme4::lmer(f1_geno, data = df_sub, control = ctrl, REML = FALSE)
+          out[[lv]] = m1s
+          out[[paste0(lv, "_pval")]] = tryCatch(stats::anova(m0s, m1s)[2, "Pr(>Chisq)"], error = function(e) NA_real_)
+        }
+      }
+    }
+
+    out
+  }
+
+  message("FITTING LMER MODELS FOR PROVIDED (gene, marker) PAIRS")
+  nPairs = nrow(dfPairs)
+  idx = seq_len(nPairs)
+  pb = txtProgressBar(min = 0, max = nPairs, style = 3)
+
+  if (cores > 1) {
+    res = parallel::mclapply(idx, function(i) fit_one_pair(dfPairs$gene[i], dfPairs$marker[i]),
+                             mc.cores = cores)
+    setTxtProgressBar(pb, nPairs)
+  } else {
+    res = lapply(idx, function(i) {
+      ans = fit_one_pair(dfPairs$gene[i], dfPairs$marker[i])
+      setTxtProgressBar(pb, i)
+      ans
+    })
+  }
+
+  close(pb); cat("\n")
+  names(res) = paste0(dfPairs$gene, "_", dfPairs$marker)
+  res
+}
+
+
+# summarize the QTL models from the targeted search into a df
+modelQTL_to_df = function(modelQTL) {
+  if (!requireNamespace("lme4", quietly = TRUE)) stop("Package 'lme4' is required.")
+
+  is_lmer = function(m) inherits(m, "lmerMod")
+
+  get_geno_effect = function(m) {
+    if (!is_lmer(m)) return(NA_real_)
+    fx = lme4::fixef(m)
+    if (!"geno" %in% names(fx)) return(NA_real_)
+    unname(fx["geno"])
+  }
+
+  get_interaction_effect = function(m) {
+    if (!is_lmer(m)) return(NA_real_)
+    fx = lme4::fixef(m)
+    ixn_names = grep("(^geno:|:geno$)", names(fx), value = TRUE)
+    if (length(ixn_names) == 0) return(NA_real_)
+    vals = fx[ixn_names]
+    if (length(vals) == 1) return(unname(vals))
+    unname(vals[which.max(abs(vals))])
+  }
+
+  infer_levels = function(x) {
+    nms = names(x)
+    # keep only subset models (exclude pval slots)
+    levs = setdiff(nms, c("gene", "marker", "geno", "interaction", "geno_pval", "interaction_pval"))
+    levs = levs[!grepl("_pval$", levs)]
+    levs
+  }
+
+  subset_levels = character(0)
+  for (x in modelQTL) {
+    lv = infer_levels(x)
+    if (length(lv) > 0) { subset_levels = lv; break }
+  }
+
+  rows = vector("list", length(modelQTL))
+
+  for (i in seq_along(modelQTL)) {
+    x = modelQTL[[i]]
+
+    row = list(
+      gene = x$gene,
+      marker = x$marker,
+
+      geno_effect = get_geno_effect(x$geno),
+      geno_pval = if (!is.null(x$geno_pval)) as.numeric(x$geno_pval) else NA_real_,
+
+      interaction_effect = get_interaction_effect(x$interaction),
+      interaction_pval = if (!is.null(x$interaction_pval)) as.numeric(x$interaction_pval) else NA_real_
+    )
+
+    for (lv in subset_levels) {
+      row[[paste0(lv, "_effect")]] = get_geno_effect(x[[lv]])
+      row[[paste0(lv, "_pval")]] =
+        if (!is.null(x[[paste0(lv, "_pval")]])) as.numeric(x[[paste0(lv, "_pval")]]) else NA_real_
+    }
+
+    rows[[i]] = row
+  }
+
+  df = as.data.frame(do.call(rbind, lapply(rows, as.data.frame)), stringsAsFactors = FALSE)
+
+  num_cols = setdiff(names(df), c("gene", "marker"))
+  for (cc in num_cols) df[[cc]] = suppressWarnings(as.numeric(df[[cc]]))
+  df
+}
+
+binTwoLevel = function(df, level1, level2, alpha = 0.05,
+  pval_suffix = "_pval", effect_suffix = "_effect") {
+
+  l1_p = paste0(level1, pval_suffix)
+  l2_p = paste0(level2, pval_suffix)
+  l1_e = paste0(level1, effect_suffix)
+  l2_e = paste0(level2, effect_suffix)
+
+  sig1 = !is.na(df[[l1_p]]) & df[[l1_p]] < alpha
+  sig2 = !is.na(df[[l2_p]]) & df[[l2_p]] < alpha
+
+  e1 = df[[l1_e]]
+  e2 = df[[l2_e]]
+
+  # binning direction
+
+  same_dir =
+    !is.na(e1) & !is.na(e2) &
+    e1 != 0 & e2 != 0 &
+    sign(e1) == sign(e2)
+
+  opp_dir =
+    !is.na(e1) & !is.na(e2) &
+    e1 != 0 & e2 != 0 &
+    sign(e1) != sign(e2)
+
+  # all bins
+  bin = rep(NA_character_, nrow(df))
+
+  bin[!sig1 & !sig2] = "nd in singles"
+  bin[ sig1 & !sig2] = paste0(level1, " specific")
+  bin[!sig1 &  sig2] = paste0(level2, " specific")
+  bin[ sig1 &  sig2 & same_dir] = "same direction"
+  bin[ sig1 &  sig2 & opp_dir]  = "line cross"
+
+  # edge case: both significant but one/both effects are 0 or NA
+  bin[sig1 & sig2 & is.na(bin)] = "Both significant (direction NA)"
+
+  df$bin = bin
+
+  # quick count table
+  counts = as.data.frame(table(df$bin, useNA = "ifany"), stringsAsFactors = FALSE)
+  names(counts) = c("bin", "count")
+  counts = counts[order(-counts$count), , drop = FALSE]
+  rownames(counts) = NULL
+
+  list(df = df, counts = counts)
+}
+
+aggregate_chunks = function(inp_dir, out_rda) {
+  files = list.files(inp_dir, pattern = "^chunk[0-9]+\\.rda$", full.names = TRUE)
+  if (length(files) == 0) stop("No chunk*.rda in: ", inp_dir)
+
+  # numeric sort by chunk index
+  idx = as.integer(sub("^chunk([0-9]+)\\.rda$", "\\1", basename(files)))
+  files = files[order(idx)]
+
+  agg = NULL
+  for (f in files) {
+    e = new.env(parent = emptyenv())
+    load(f, envir = e)
+
+    x = e$chunkAssocs
+    if (is.null(x)) stop("chunkAssocs missing in: ", f)
+
+    # NEW: if chunkAssocs is a length-1 list (your [[1]] wrapper), unwrap it
+    if (is.list(x) && length(x) == 1L) x = x[[1]]
+
+    if (!is.data.frame(x)) {
+      stop("chunkAssocs in ", f, " is not a data.frame after unwrapping; class=",
+           paste(class(x), collapse = "/"))
+    }
+
+    if (is.null(agg)) agg = x else agg = dplyr::bind_rows(agg, x)
+  }
+
+  out_name = tools::file_path_sans_ext(basename(out_rda))
+  assign(out_name, agg, envir = .GlobalEnv)
+
+  out_dir = dirname(out_rda)
+  if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+
+  save(list = out_name, file = out_rda)
+  message("Wrote ", out_rda, " (object: ", out_name, ", rows: ", nrow(agg), ")")
+}
+
+# Build augmented QTL df (original + added cols + attached modelQTL) and save it
+attach_drill_info_and_save = function(
+  dfQTL,
+  studies,
+  unionBg,
+  smetadata,
+  suppGenes = NULL,
+  fixedEffect = NULL,
+  correctBG = FALSE,
+  correctGRM = FALSE,
+  cores = 1,
+  chromosomes = NULL,
+  do_bin = FALSE,
+  bin_level1 = NULL,
+  bin_level2 = NULL,
+  bin_alpha = 0.05,
+  out_name,
+  out_file
+) {
+  df_in = dfQTL
+  df_in$gene = as.character(df_in$gene)
+  df_in$marker = as.character(df_in$marker)
+
+  modelQTL = drillQTL(
+    studies = studies,
+    dfQTL = df_in,
+    unionBg = unionBg,
+    smetadata = smetadata,
+    suppGenes = suppGenes,
+    fixedEffect = fixedEffect,
+    correctBG = correctBG,
+    correctGRM = correctGRM,
+    cores = cores,
+    chromosomes = chromosomes
+  )
+
+  df_out = df_in
+
+  if (length(modelQTL) > 0) {
+    df_add = modelQTL_to_df(modelQTL)
+
+    df_out = merge(
+      x = df_in,
+      y = df_add,
+      by = c("gene", "marker"),
+      all.x = TRUE,
+      sort = FALSE
+    )
+  }
+
+  if (isTRUE(do_bin)) {
+    if (is.null(bin_level1) || is.null(bin_level2)) {
+      stop("do_bin=TRUE requires bin_level1 and bin_level2.")
+    }
+
+    b = binTwoLevel(
+      df_out,
+      level1 = bin_level1,
+      level2 = bin_level2,
+      alpha = bin_alpha
+    )
+
+    df_out = b$df
+    attr(df_out, "bin_counts") = b$counts
+  }
+
+  assign(out_name, df_out, envir = .GlobalEnv)
+  save(list = out_name, file = out_file)
+
+  rm(modelQTL)
+  invisible(gc())
+
+  df_out
+}
+
+##########################
+# mashr analysis section #
+##########################
+
+load_rda_object = function(path, object_name = NULL) {
+  env = new.env(parent = emptyenv())
+  nm = load(path, envir = env)
+
+  if (!is.null(object_name)) {
+    if (!(object_name %in% nm)) {
+      stop("Object '", object_name, "' not found in ", path)
+    }
+    return(env[[object_name]])
+  }
+
+  if (length(nm) != 1L) {
+    stop(
+      "load_rda_object() expected exactly one object in ",
+      path,
+      " when object_name is NULL, but found: ",
+      paste(nm, collapse = ", ")
+    )
+  }
+
+  env[[nm]]
+}
+
+write_tsv_if_needed = function(dt, path, overwrite = FALSE, sep = "\t") {
+  if (!file.exists(path) || isTRUE(overwrite)) {
+    data.table::fwrite(dt, path, sep = sep)
+  }
+  invisible(path)
+}
+
+write_lines_if_needed = function(x, path, overwrite = FALSE) {
+  if (!file.exists(path) || isTRUE(overwrite)) {
+    writeLines(x, path)
+  }
+  invisible(path)
+}
+
+prepare_output_dirs = function(path) {
+  dir.create(path, showWarnings = FALSE, recursive = TRUE)
+}
+
+fit_gene_in_study = function(study, gene) {
+  if (!(gene %in% colnames(study$pclean))) {
+    m = ncol(study$gscaled)
+    return(list(
+      beta = rep(NA_real_, m),
+      se = rep(NA_real_, m),
+      n = NA_integer_
+    ))
+  }
+
+  y = as.numeric(study$pclean[, gene])
+  G = study$gscaled
+
+  ok = is.finite(y)
+  y = y[ok]
+  G = G[ok, , drop = FALSE]
+
+  n = length(y)
+  m = ncol(G)
+
+  if (n < 3L) {
+    return(list(
+      beta = rep(NA_real_, m),
+      se = rep(NA_real_, m),
+      n = n
+    ))
+  }
+
+  numer = as.numeric(crossprod(y, G))
+  denom = colSums(G^2)
+  beta = numer / denom
+
+  ssy = sum(y^2)
+  rss = ssy - (numer^2 / denom)
+  se = sqrt((rss / (n - 2)) / denom)
+
+  beta[!is.finite(beta)] = NA_real_
+  se[!is.finite(se)] = NA_real_
+
+  list(beta = beta, se = se, n = n)
+}
+
+build_gene_mats = function(gene, gene_fits, study_names, markers) {
+  fits = gene_fits[[gene]]
+
+  Bhat = do.call(cbind, lapply(fits, `[[`, "beta"))
+  Shat = do.call(cbind, lapply(fits, `[[`, "se"))
+
+  colnames(Bhat) = study_names
+  colnames(Shat) = study_names
+  rownames(Bhat) = markers
+  rownames(Shat) = markers
+
+  ns = vapply(fits, `[[`, integer(1), "n")
+
+  list(Bhat = Bhat, Shat = Shat, n = ns)
+}
+
+build_shared_ld_reference = function(overwrite = FALSE) {
+  path = outfile("shared_ld_reference.rds")
+
+  load_or_compute_rds(
+    path,
+    expr = {
+      message("Loading studies once to compute shared LD reference...")
+      studies_file = infile("studies.rda")
+      studies_all = load_rda_object(studies_file, "studies")
+
+      if ("Albert_2018" %in% names(studies_all)) {
+        studies_all = studies_all[names(studies_all) != "Albert_2018"]
+      }
+
+      studies_all = lapply(names(studies_all), function(x) {
+        harmonize_study_rowkeys(studies_all[[x]], study_name = x)
+      }) |> `names<-`(names(studies_all))
+
+      ref_study = choose_ld_reference_study(studies_all)
+      message("Using ", ref_study, " as the LD reference study.")
+
+      G = studies_all[[ref_study]]$gdata
+      if (is.null(G)) {
+        stop("Reference study ", ref_study, " does not contain gdata.")
+      }
+
+      ld_r = stats::cor(G, use = "pairwise.complete.obs")
+
+      out = list(
+        study = ref_study,
+        markers = colnames(G),
+        ld_r = ld_r
+      )
+
+      rm(studies_all, G, ld_r)
+      gc()
+
+      out
+    },
+    overwrite = overwrite,
+    label = "shared LD reference"
+  )
+}
+
+align_ld_matrix = function(ld_reference, markers) {
+  if (!all(markers %in% ld_reference$markers)) {
+    missing_markers = setdiff(markers, ld_reference$markers)
+    stop(
+      "Some markers are missing from the shared LD matrix: ",
+      paste(head(missing_markers, 10L), collapse = ", ")
+    )
+  }
+
+  ld_reference$ld_r[markers, markers, drop = FALSE]
+}
+
+ld_prune_gene_rows = function(
+  Bhat,
+  Shat,
+  ld_submat,
+  abs_cor_threshold = 0.95,
+  max_keep = Inf
+) {
+  stopifnot(identical(rownames(Bhat), rownames(Shat)))
+  stopifnot(identical(rownames(Bhat), rownames(ld_submat)))
+  stopifnot(identical(colnames(ld_submat), rownames(ld_submat)))
+
+  Z = Bhat / Shat
+  row_score = apply(abs(Z), 1, max, na.rm = TRUE)
+  row_score[!is.finite(row_score)] = -Inf
+
+  ord = order(row_score, decreasing = TRUE)
+  marker_names = rownames(Bhat)
+  keep = integer(0)
+  blocked = rep(FALSE, length(marker_names))
+  names(blocked) = marker_names
+
+  for (idx in ord) {
+    marker_i = marker_names[idx]
+
+    if (isTRUE(blocked[marker_i])) {
+      next
+    }
+
+    keep = c(keep, idx)
+
+    if (length(keep) >= max_keep) {
+      break
+    }
+
+    linked = abs(ld_submat[marker_i, marker_names]) >= abs_cor_threshold
+    linked[!is.finite(linked)] = FALSE
+    blocked[marker_names[linked]] = TRUE
+  }
+
+  sort(unique(keep))
 }
 
 print('SOURCE OF CONSTANTS AND FUNCTIONS WAS SUCCESSFUL')

@@ -11,7 +11,7 @@
 ##########################################
 
 # SOURCE FXNS AND CONSTANTS
-source("/home/albertf/vandy147/p05/remap_functions.R")
+source("/PHShome/kv1026/p05/remap_functions.R")
 
 ###############################################
 # LOAD CEREVISIAE GENOMIC FEATURE INFORMATION #
@@ -58,7 +58,10 @@ colnames(genoG) = mapply(function(x,y)paste0(x,":",y),
 # get the BY and RM names into an appropriate form
 rownames(genoG) = unifyChain(rownames(genoG),c('BY','RM'))
 
-
+# get total number of missing in useful format
+genoG[-which(rownames(genoG) %in% c('BY','RM')),] %>% is.na() %>% sum() %>% print()
+rowSums(is.na(genoG[!rownames(genoG) %in% c("BY","RM"), ])) %>% table() %>% print()
+print(length(genoG[-which(rownames(genoG) %in% c('BY','RM')),]))
 
 # check to make sure the NA run sum matches the raw number of NAs in the data
 row_NA_scan(genoG,iG$chr) %>% unlist() %>% 
@@ -500,13 +503,13 @@ if (!file.exists(paste0(imed, "Picotti_2013.rda"))) {
   print("For Picotti 2013:")
   Picotti_2013_pheno %>%
     { 
-      row_na_percent <- apply(., 1, function(row) 
+      row_na_percent = apply(., 1, function(row) 
         sum(is.na(row)) / length(row) * 100)
-      col_na_percent <- apply(., 2, function(col) 
+      col_na_percent = apply(., 2, function(col) 
         sum(is.na(col)) / length(col) * 100)
       
-      rows_exceeding <- which(row_na_percent > threshNA * 100)
-      cols_exceeding <- which(col_na_percent > threshNA * 100)
+      rows_exceeding = which(row_na_percent > threshNA * 100)
+      cols_exceeding = which(col_na_percent > threshNA * 100)
       
       if (length(rows_exceeding) == 0 && length(cols_exceeding) == 0) {
         cat("No rows or columns exceed missingness threshold\n")
@@ -695,11 +698,19 @@ if (!file.exists(paste0(imed, "GrossbachRNA_2022.rda"))) {
                                         Grossbach_2022_meta$culture),] %>%
     (function(x)x[,c('OD', 'cultureBatch', 'riboAmpBatch',"strain")])
 
-  # Print out strain replicate information
-  print('Number of replicated strains')
-  cleanerRNA %>% filter(!strain %in% c("BY", "RM")) %>% 
-    filter(duplicated(strain) | duplicated(strain, fromLast = TRUE)) %>% 
-    nrow() %>% print()
+  # Replicate counts per strain (excluding parents)
+  rep_by_strain_rna = cleanerRNA %>%
+    filter(!strain %in% c("BY", "RM")) %>%
+    count(strain, name = "n_reps") %>%
+    arrange(desc(n_reps), strain)
+
+  # How many strains have 1, 2, 3, ... replicates?
+  rep_count_table_rna = rep_by_strain %>%
+    count(n_reps, name = "n_strains") %>%
+    arrange(n_reps)
+
+  print(rep_count_table_rna)
+
   print('Number of strains after removing replicates')
   cleanerRNA %>%   filter(!strain %in% c("BY", "RM")) %>% 
     distinct(strain) %>% nrow()
@@ -775,11 +786,19 @@ if (!file.exists(paste0(imed, "GrossbachPRT_2022.rda"))) {
                      "MSbatch_unmod","proteinConc_BCA",
                      "LCcolumn_unmod", "MSmethod_unmod", "TIC_unmod")])
 
-  # Print out strain replicate information
-  print('Number of replicated strains')
-  cleanerPRT %>% filter(!strain %in% c("BY", "RM")) %>% 
-    filter(duplicated(strain) | duplicated(strain, fromLast = TRUE)) %>% 
-    nrow() %>% print()
+  # Replicate counts per strain (excluding parents)
+  rep_by_strain_prt = cleanerPRT %>%
+    filter(!strain %in% c("BY", "RM")) %>%
+    count(strain, name = "n_reps") %>%
+    arrange(desc(n_reps), strain)
+
+  # How many strains have 1, 2, 3, ... replicates?
+  rep_count_table_prt = rep_by_strain_prt %>%
+    count(n_reps, name = "n_strains") %>%
+    arrange(n_reps)
+
+  print(rep_count_table_prt)
+
   print('Number of strains after removing replicates')
   cleanerPRT %>%   filter(!strain %in% c("BY", "RM")) %>% 
     distinct(strain) %>% nrow()
@@ -889,6 +908,7 @@ studies = lapply(classicMetadata$study, function(x) {
   get(x)
 })
 names(studies) = classicMetadata$study
+save(studies, file = paste0(imed, "studies.rda"))
 
 # Plot and save histograms for raw pheno data
 # Plot and save histograms for raw and clean phenotypes
@@ -914,26 +934,30 @@ lapply(studies,function(x)dim(x$pheno))
 # REMAP ALL DATASETS USING THE 2018 METHOD WITH THE SAME PARAMS #
 #################################################################
 
-# Detect the number of cores
-num_cores = detectCores()
+# # Find background QTLs (sequential wrapper; internal parallelism handled inside)
+# bgQTLs <- findBackgroundQTLs(studies, imed)
 
-# Find backgroundQTLs
-bgQTLs = findBackgroundQTLs(studies,imed,cores=num_cores)
+# # Use 100-column batches for permutation chunks
+# CHUNK <- 100L
 
-# Map QTLs with population structure and background QTL correction
-qtlResults_full = fullMap(studies, bgQTLs, imed, method = 'f',
-                          cores = num_cores)
+# # Map QTLs with population structure and background QTL correction
+# message("Mapping FULL (pop structure + background correction)...")
+# t_full <- proc.time()[["elapsed"]]
+# qtlResults_full <- fullMap(studies, bgQTLs, imed, method = "f", chunk = CHUNK)
+# message(sprintf("FULL mapping finished in %.2f s", proc.time()[["elapsed"]] - t_full))
 
-# Collapse full QTLs into a nice object
-indivFullQTLs = qtlResults_full %>%
-  map_dfr(~map_dfr(.x, ~.x, .id = "chr"), .id = "study")
-save(indivFullQTLs,file=paste0(imed,'indivFullQTLs.rda'))
+# # Collapse full QTLs into a nice object
+# indivFullQTLs <- qtlResults_full %>%
+#   map_dfr(~map_dfr(.x, ~.x, .id = "chr"), .id = "study")
+# save(indivFullQTLs, file = paste0(imed, "indivFullQTLs.rda"))
 
-# Map QTLs without population structure and background QTL correction
-qtlResults_simple = fullMap(studies, bgQTLs, imed, method = 's',
-                            cores = num_cores)
+# # Map QTLs without population structure and background QTL correction
+# message("Mapping SIMPLE (empirical null only)...")
+# t_simple <- proc.time()[["elapsed"]]
+# qtlResults_simple <- fullMap(studies, bgQTLs, imed, method = "s", chunk = CHUNK)
+# message(sprintf("SIMPLE mapping finished in %.2f s", proc.time()[["elapsed"]] - t_simple))
 
-# collapse simple QTLs into a nice object
-indivSimpleQTLs = qtlResults_simple %>%
-  map_dfr(~map_dfr(.x, ~.x, .id = "chr"), .id = "study")
-save(indivSimpleQTLs,file=paste0(imed,'indivSimpleQTLs.rda'))
+# # Collapse simple QTLs into a nice object
+# indivSimpleQTLs <- qtlResults_simple %>%
+#   map_dfr(~map_dfr(.x, ~.x, .id = "chr"), .id = "study")
+# save(indivSimpleQTLs, file = paste0(imed, "indivSimpleQTLs.rda"))

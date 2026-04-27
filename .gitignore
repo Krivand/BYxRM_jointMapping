@@ -1,5 +1,14 @@
-asys/
-imed/
-old/
-raw/
-logs/
+#ignore everything
+*
+
+# allow directories so git can see into root
+!*/
+
+# ignore all subdirectories entirely
+*/
+
+# allow only top-level .R files
+!*.R
+
+# keep the gitignore itself
+!.gitignore
