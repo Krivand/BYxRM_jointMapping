@@ -1,24 +1,56 @@
 #!/bin/bash
+#SBATCH --job-name=iRemapAll
+#SBATCH --output=/PHShome/kv1026/p05/logs/iRemapAll.out
+#SBATCH --error=/PHShome/kv1026/p05/logs/iRemapAll.err
+#SBATCH --time=24:00:00
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=32
+#SBATCH --mem=32G
+#SBATCH --mail-type=ALL
+#SBATCH --mail-user=krisna_vandyke@mail.dfci.harvard.edu
+#SBATCH --export=ALL
 
-# Define project path
-PROJECTPATH=/home/albertf/vandy147/p05
-BASE_NAME="iRemapAll"
+set -euo pipefail
 
-#SBATCH --job-name=${BASE_NAME}                         # Job name
-#SBATCH --output=${PROJECTPATH}/logs/${BASE_NAME}.out   # Standard output and error log
-#SBATCH --error=${PROJECTPATH}/logs/${BASE_NAME}.err    # Error log
-#SBATCH --time=24:00:00                                 # Time limit hrs:min:sec
-#SBATCH --ntasks=1                                      # Number of tasks (usually 1 for a single R script)
-#SBATCH --cpus-per-task=11                              # Number of CPU cores per task
-#SBATCH --mem=48G                                       # Memory per node
-#SBATCH --mail-type=ALL                                 # Mail events (NONE, BEGIN, END, FAIL, ALL)
-#SBATCH --mail-user=vandy147@umn.edu                    # Where to send mail
+echo "[$(date)] Node: ${SLURMD_NODENAME:-$(hostname)}"
+echo "Shell: $SHELL"
 
-# Unset R_HOME to avoid conflicts
-unset R_HOME
+# 0) Ensure Lmod (module) is initialized even in clean shells
+if ! command -v module >/dev/null 2>&1; then
+  # Try common init locations (safe to source if present)
+  [ -f /etc/profile.d/lmod.sh ]    && . /etc/profile.d/lmod.sh
+  [ -f /etc/profile.d/modules.sh ] && . /etc/profile.d/modules.sh
+  [ -f /usr/share/lmod/lmod/init/bash ] && . /usr/share/lmod/lmod/init/bash
+fi
 
-# Load the R module (make sure to specify the version you want)
-module load R/4.4.0-openblas-rocky8
+# Sanity check
+if ! command -v module >/dev/null 2>&1; then
+  echo "FATAL: Lmod not initialized (no 'module' command). Check system profiles." >&2
+  exit 2
+fi
 
-# Run the R script
-Rscript ${PROJECTPATH}/${BASE_NAME}.R
+# 1) Clean up env that can confuse R
+unset R_HOME || true
+
+# 2) Try to load R (ignore cache so stale indexes don't bite us)
+echo "Initializing MODULEPATH:"
+echo "${MODULEPATH:-<empty>}" | tr ':' '\n' || true
+
+module --ignore-cache load R/4.4.0 || {
+  echo "WARN: 'module load R/4.4.0' failed. Showing spider info for R:" >&2
+  module spider R || true
+  echo "FATAL: Could not load an R module. Adjust the version to one listed above." >&2
+  exit 3
+}
+
+# 3) Log what we actually got
+echo "Loaded modules:"
+module list 2>&1 || true
+
+echo "Rscript location: $(command -v Rscript || echo 'not found')"
+Rscript --version || { echo "FATAL: Rscript still not found after module load." >&2; exit 4; }
+
+# 4) Run your script
+echo "[$(date)] Starting R job…"
+Rscript /PHShome/kv1026/p05/iRemapAll.R
+echo "[$(date)] Done."

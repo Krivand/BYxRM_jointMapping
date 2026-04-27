@@ -162,6 +162,7 @@ studyNiceNames = c(
   "GrossbachRNA_2022" = "Grossbach 2022 (RNA)",
   "GrossbachPRT_2022" = "Grossbach 2022 (Protein)"
 )
+
 # Threshold for NA removal
 threshNA = 0.25
 
