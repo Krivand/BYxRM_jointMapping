@@ -95,6 +95,35 @@ build_pair_table = function(tbl, flag_name) {
     dplyr::mutate(!!flag_name := TRUE)
 }
 
+write_xlsx_safely = function(tbl, path, sheet_prefix = "posteriors") {
+  max_excel_rows = 1048576L
+
+  wb = openxlsx::createWorkbook()
+
+  if (nrow(tbl) <= max_excel_rows) {
+    openxlsx::addWorksheet(wb, sheet_prefix)
+    openxlsx::writeDataTable(wb, sheet = sheet_prefix, x = tbl)
+  } else {
+    n_chunks = ceiling(nrow(tbl) / max_excel_rows)
+
+    for (i in seq_len(n_chunks)) {
+      idx_start = ((i - 1L) * max_excel_rows) + 1L
+      idx_end = min(i * max_excel_rows, nrow(tbl))
+      sheet_name = paste0(sheet_prefix, "_", i)
+
+      openxlsx::addWorksheet(wb, sheet_name)
+      openxlsx::writeDataTable(
+        wb,
+        sheet = sheet_name,
+        x = tbl[idx_start:idx_end, , drop = FALSE]
+      )
+    }
+  }
+
+  openxlsx::saveWorkbook(wb, file = path, overwrite = TRUE)
+  invisible(path)
+}
+
 build_rows_for_pairs = function(pair_df, gene_fits, study_names, min_present = 5L) {
   out_rows = vector("list", nrow(pair_df))
   keep = rep(FALSE, nrow(pair_df))
@@ -501,7 +530,16 @@ run_one_prefix = function(prefix) {
       stringsAsFactors = FALSE
     ) %>%
     left_join(metadata_qtl_flat, by = "study") %>%
-    left_join(selected_pairs, by = c("gene", "marker"))
+    left_join(selected_pairs, by = c("gene", "marker")) %>%
+    arrange(gene, marker, study)
+
+  write_xlsx_safely(
+    tbl = posteriors,
+    path = outfile("all_qtl_pair_posteriors.xlsx"),
+    sheet_prefix = "posteriors"
+  )
+
+  message("Wrote full unfiltered posterior table to: ", outfile("all_qtl_pair_posteriors.xlsx"))
 
   pair_signal_summary = summarise_pair_signal(posteriors, alpha = alpha)
 

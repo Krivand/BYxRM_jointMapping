@@ -52,7 +52,7 @@ if (!requireNamespace("BiocManager", quietly = TRUE)) {
 
 # All package names
 pkgs = c("broom.mixed", "GenomicRanges", "gridExtra", "leaps", "lme4", "lmerTest",
-         "mashr", "parallel", "patchwork", "pbapply", "pbmcapply", "plyr", 
+         "mashr", "openxlsx", "parallel", "patchwork", "pbapply", "pbmcapply", "plyr", 
          "progress", "RColorBrewer", "readxl", "rrBLUP", "tidyverse", "viridis")
 
 # Install using correct package installation tools
