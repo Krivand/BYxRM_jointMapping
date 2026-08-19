@@ -391,189 +391,100 @@ validate_direct_simulation = function(
   )
 }
 
-make_qtl_granges = function(qtls, pad = 0L) {
+fit_observed_overlap_glmm = function(dat) {
 
-  if (nrow(qtls) == 0L) {
-    return(GenomicRanges::GRanges())
-  }
-
-  ci_left = suppressWarnings(as.numeric(qtls$CI.l))
-  ci_right = suppressWarnings(as.numeric(qtls$CI.r))
-
-  if (any(!is.finite(ci_left)) || any(!is.finite(ci_right))) {
-    stop("Non-finite QTL confidence-interval coordinates encountered.")
-  }
-
-  starts = pmax(
-    1L,
-    floor(pmin(ci_left, ci_right)) - as.integer(pad)
-  )
-  ends = ceiling(pmax(ci_left, ci_right)) + as.integer(pad)
-
-  # Encoding gene and chromosome together as seqnames makes the overlap
-  # search intrinsically gene-specific and avoids hotspot-driven cross-gene
-  # overlap explosions.
-  seq_key = paste(
-    qtls$gene,
-    qtls$chr,
-    sep = "::"
-  )
-
-  gr = GenomicRanges::GRanges(
-    seqnames = seq_key,
-    ranges = IRanges::IRanges(
-      start = starts,
-      end = ends
-    )
-  )
-
-  S4Vectors::mcols(gr)$r = qtls$r
-  S4Vectors::mcols(gr)$gene = qtls$gene
-  gr
-}
-
-build_observed_pairwise = function(
-  indiv_qtls,
-  studies,
-  study_design,
-  pad = 10000L
-) {
-
-  qtl_by_study = lapply(
-    study_design$study,
-    function(study) {
-      indiv_qtls[
-        indiv_qtls$study == study,
-        ,
-        drop = FALSE
-      ]
-    }
-  )
-  names(qtl_by_study) = study_design$study
-
-  gene_by_study = lapply(
-    study_design$study,
-    function(study) {
-      colnames(studies[[study]]$pheno)
-    }
-  )
-  names(gene_by_study) = study_design$study
-
-  pair_grid = expand.grid(
-    query = study_design$study,
-    target = study_design$study,
-    stringsAsFactors = FALSE
-  )
-  pair_grid = pair_grid[
-    pair_grid$query != pair_grid$target,
+  model_data = dat[
+    is.finite(dat$observed_rediscovery) &
+    dat$n_query_eligible > 0L,
     ,
     drop = FALSE
   ]
 
-  out = lapply(
-    seq_len(nrow(pair_grid)),
-    function(i) {
+  model_data$misses =
+    model_data$n_query_eligible -
+    model_data$n_matches
 
-      query = pair_grid$query[[i]]
-      target = pair_grid$target[[i]]
-
-      common_genes = intersect(
-        gene_by_study[[query]],
-        gene_by_study[[target]]
+  model_data$comparison =
+    factor(
+      model_data$comparison,
+      levels = c(
+        "mRNA_to_mRNA",
+        "mRNA_to_protein",
+        "protein_to_mRNA",
+        "protein_to_protein"
       )
+    )
 
-      query_qtls = qtl_by_study[[query]]
-      target_qtls = qtl_by_study[[target]]
+  model_data$query =
+    factor(model_data$query)
 
-      query_qtls = query_qtls[
-        query_qtls$gene %in% common_genes,
-        ,
-        drop = FALSE
-      ]
-      target_qtls = target_qtls[
-        target_qtls$gene %in% common_genes,
-        ,
-        drop = FALSE
-      ]
+  model_data$target =
+    factor(model_data$target)
 
-      n_query = nrow(query_qtls)
-
-      if (n_query == 0L || nrow(target_qtls) == 0L) {
-        n_match = 0L
-      } else {
-
-        query_gr = make_qtl_granges(
-          query_qtls,
-          pad = pad
-        )
-        target_gr = make_qtl_granges(
-          target_qtls,
-          pad = 0L
-        )
-
-        hits = GenomicRanges::findOverlaps(
-          query_gr,
-          target_gr,
-          ignore.strand = TRUE
-        )
-
-        if (length(hits) == 0L) {
-          n_match = 0L
-        } else {
-          q_idx = S4Vectors::queryHits(hits)
-          t_idx = S4Vectors::subjectHits(hits)
-
-          direction_match =
-            sign(query_qtls$r[q_idx]) ==
-            sign(target_qtls$r[t_idx])
-
-          n_match = length(
-            unique(
-              q_idx[direction_match]
-            )
-          )
-        }
-      }
-
-      data.frame(
-        query = query,
-        target = target,
-        n_common_genes = length(common_genes),
-        n_query_eligible = n_query,
-        n_target_eligible = nrow(target_qtls),
-        n_matches = n_match,
-        observed_rediscovery = if (n_query > 0L) {
-          n_match / n_query
-        } else {
-          NA_real_
-        },
-        stringsAsFactors = FALSE
+  fit = lme4::glmer(
+    cbind(
+      n_matches,
+      misses
+    ) ~
+      0 +
+      comparison +
+      (1 | query) +
+      (1 | target),
+    family = stats::binomial(),
+    data = model_data,
+    control = lme4::glmerControl(
+      optimizer = "bobyqa",
+      optCtrl = list(
+        maxfun = 200000
       )
-    }
+    )
   )
 
-  observed = do.call(rbind, out)
+  coef_tab =
+    summary(fit)$coefficients
 
-  index = match(observed$query, study_design$study)
-  observed$query_analyte = study_design$analyte[index]
-  observed$query_medium = study_design$medium[index]
-  observed$query_n = study_design$n[index]
+  estimate =
+    coef_tab[, "Estimate"]
 
-  index = match(observed$target, study_design$study)
-  observed$target_analyte = study_design$analyte[index]
-  observed$target_medium = study_design$medium[index]
-  observed$target_n = study_design$n[index]
+  se =
+    coef_tab[, "Std. Error"]
 
-  observed$comparison = paste0(
-    observed$query_analyte,
-    "_to_",
-    observed$target_analyte
+  comparison =
+    sub(
+      "^comparison",
+      "",
+      rownames(coef_tab)
+    )
+
+  data.frame(
+    comparison = comparison,
+    estimate_logit = estimate,
+    se_logit = se,
+    adjusted_agreement = stats::plogis(
+      estimate
+    ),
+    adjusted_lower_95 = stats::plogis(
+      estimate -
+      1.96 * se
+    ),
+    adjusted_upper_95 = stats::plogis(
+      estimate +
+      1.96 * se
+    ),
+    singular_fit = lme4::isSingular(
+      fit,
+      tol = 1e-4
+    ),
+    n_pairs =
+      as.integer(
+        table(
+          model_data$comparison
+        )[
+          comparison
+        ]
+      ),
+    stringsAsFactors = FALSE
   )
-  observed$same_medium =
-    observed$query_medium == observed$target_medium
-  observed$interval_padding_bp = as.integer(pad)
-
-  observed
 }
 
 safe_cor = function(x, y, method = "pearson") {
@@ -828,16 +739,666 @@ fit_quantiles = data.frame(
 # OBSERVED PAIRWISE OVERLAP #
 ############################
 
-message(
-  "Recomputing observed individual-study rediscovery..."
+
+########################################
+# REPRODUCE FRANK FIGURE 3 OVERLAPS    #
+########################################
+
+normalize_yeast_chr = function(x) {
+
+  x = toupper(
+    trimws(
+      as.character(x)
+    )
+  )
+
+  x = sub(
+    "^CHR",
+    "",
+    x
+  )
+
+  roman = c(
+    "I", "II", "III", "IV",
+    "V", "VI", "VII", "VIII",
+    "IX", "X", "XI", "XII",
+    "XIII", "XIV", "XV", "XVI"
+  )
+
+  idx = match(
+    x,
+    roman
+  )
+
+  use = !is.na(idx)
+
+  x[use] =
+    as.character(
+      idx[use]
+    )
+
+  x
+}
+
+make_frank_qtl_granges = function(
+  qtls,
+  pad = 10000L
+) {
+
+  required = c(
+    "gene_ID",
+    "CI_chr",
+    "CI_min_base",
+    "CI_max_base",
+    "cor_coef"
+  )
+
+  missing = setdiff(
+    required,
+    colnames(qtls)
+  )
+
+  if (length(missing) > 0L) {
+    stop(
+      "Frank QTL table missing: ",
+      paste(
+        missing,
+        collapse = ", "
+      )
+    )
+  }
+
+  left = suppressWarnings(
+    as.numeric(
+      qtls$CI_min_base
+    )
+  )
+
+  right = suppressWarnings(
+    as.numeric(
+      qtls$CI_max_base
+    )
+  )
+
+  bad =
+    !is.finite(left) |
+    !is.finite(right)
+
+  if (any(bad)) {
+    stop(
+      "Non-finite Frank QTL confidence intervals encountered."
+    )
+  }
+
+  seq_key = paste(
+    normalize_yeast_chr(
+      qtls$CI_chr
+    ),
+    qtls$gene_ID,
+    sep = "_"
+  )
+
+  strand = ifelse(
+    qtls$cor_coef > 0,
+    "+",
+    ifelse(
+      qtls$cor_coef < 0,
+      "-",
+      "*"
+    )
+  )
+
+  gr = GenomicRanges::GRanges(
+    seqnames = seq_key,
+    ranges = IRanges::IRanges(
+      start = pmax(
+        1,
+        pmin(
+          left,
+          right
+        ) -
+        as.integer(pad)
+      ),
+      end =
+        pmax(
+          left,
+          right
+        ) +
+        as.integer(pad)
+    ),
+    strand = strand
+  )
+
+  S4Vectors::mcols(gr)$gene =
+    qtls$gene_ID
+
+  S4Vectors::mcols(gr)$r =
+    qtls$cor_coef
+
+  gr
+}
+
+make_technical_marker_ranges = function(chr_features) {
+
+  required = c(
+    "Feature_Name",
+    "Chromosome",
+    "Start_Coordinate",
+    "Stop_Coordinate"
+  )
+
+  missing = setdiff(
+    required,
+    colnames(chr_features)
+  )
+
+  if (length(missing) > 0L) {
+    stop(
+      paste0(
+        "chrFeatures missing columns required for ",
+        "Frank technical-marker exclusions: ",
+        paste(
+          missing,
+          collapse = ", "
+        )
+      )
+    )
+  }
+
+  tech_orf = c(
+    LEU2 = "YCL018W",
+    MAT = "YCR039C",
+    URA3 = "YEL021W",
+    AMN1 = "YBR158W",
+    KRE33 = "YNL132W"
+  )
+
+  idx = match(
+    unname(tech_orf),
+    chr_features$Feature_Name
+  )
+
+  if (any(is.na(idx))) {
+    stop(
+      "Technical-marker ORFs missing from chrFeatures: ",
+      paste(
+        names(tech_orf)[is.na(idx)],
+        collapse = ", "
+      )
+    )
+  }
+
+  left = suppressWarnings(
+    as.numeric(
+      chr_features$Start_Coordinate[idx]
+    )
+  )
+
+  right = suppressWarnings(
+    as.numeric(
+      chr_features$Stop_Coordinate[idx]
+    )
+  )
+
+  gr = GenomicRanges::GRanges(
+    seqnames = normalize_yeast_chr(
+      chr_features$Chromosome[idx]
+    ),
+    ranges = IRanges::IRanges(
+      start = pmin(
+        left,
+        right
+      ),
+      end = pmax(
+        left,
+        right
+      )
+    )
+  )
+
+  names(gr) =
+    names(tech_orf)
+
+  gr
+}
+
+frank_technical_markers = function() {
+
+  standard = c(
+    "LEU2",
+    "URA3",
+    "AMN1",
+    "MAT"
+  )
+
+  list(
+    Brem_2002 = standard,
+    Brem_2005 = standard,
+    SmithEth_2008 = standard,
+    SmithGlc_2008 = standard,
+    Khan_2009 = standard,
+    Foss_2011 = standard,
+    Picotti_2013 = standard,
+    GrossbachRNA_2022 = standard,
+    GrossbachPRT_2022 = standard,
+    Albert_2018 = c(
+      "MAT",
+      "KRE33"
+    )
+  )
+}
+
+build_observed_pairwise_frank = function(
+  qtl_by_study,
+  studies,
+  study_design,
+  technical_marker_ranges,
+  pad = 10000L
+) {
+
+  tech_list =
+    frank_technical_markers()
+
+  pair_grid = expand.grid(
+    query = study_design$study,
+    target = study_design$study,
+    stringsAsFactors = FALSE
+  )
+
+  pair_grid = pair_grid[
+    pair_grid$query !=
+    pair_grid$target,
+    ,
+    drop = FALSE
+  ]
+
+  out = lapply(
+    seq_len(
+      nrow(pair_grid)
+    ),
+    function(i) {
+
+      query =
+        pair_grid$query[[i]]
+
+      target =
+        pair_grid$target[[i]]
+
+      query_genes =
+        colnames(
+          studies[[query]]$pheno
+        )
+
+      target_genes =
+        colnames(
+          studies[[target]]$pheno
+        )
+
+      query_qtls =
+        qtl_by_study[[query]]
+
+      target_qtls =
+        qtl_by_study[[target]]
+
+      # Frank datasetOverlap(): query QTLs must affect genes
+      # that were measured in the target dataset.
+      query_qtls =
+        query_qtls[
+          query_qtls$gene_ID %in%
+          target_genes,
+          ,
+          drop = FALSE
+        ]
+
+      n_before_technical =
+        nrow(query_qtls)
+
+      # Frank datasetOverlap(): remove technical-marker loci
+      # present in the query cross but absent from the target.
+      exclude_markers = setdiff(
+        tech_list[[query]],
+        tech_list[[target]]
+      )
+
+      n_technical_excluded = 0L
+
+      if (
+        nrow(query_qtls) > 0L &&
+        length(exclude_markers) > 0L
+      ) {
+
+        left = suppressWarnings(
+          as.numeric(
+            query_qtls$CI_min_base
+          )
+        )
+
+        right = suppressWarnings(
+          as.numeric(
+            query_qtls$CI_max_base
+          )
+        )
+
+        query_chr_gr =
+          GenomicRanges::GRanges(
+            seqnames =
+              normalize_yeast_chr(
+                query_qtls$CI_chr
+              ),
+            ranges = IRanges::IRanges(
+              start = pmax(
+                1,
+                pmin(
+                  left,
+                  right
+                ) -
+                as.integer(pad)
+              ),
+              end =
+                pmax(
+                  left,
+                  right
+                ) +
+                as.integer(pad)
+            )
+          )
+
+        technical_overlap =
+          suppressWarnings(
+            GenomicRanges::countOverlaps(
+              query_chr_gr,
+              technical_marker_ranges[
+                exclude_markers
+              ],
+              ignore.strand = TRUE
+            )
+          ) > 0L
+
+        n_technical_excluded =
+          sum(
+            technical_overlap
+          )
+
+        query_qtls =
+          query_qtls[
+            !technical_overlap,
+            ,
+            drop = FALSE
+          ]
+      }
+
+      n_query =
+        nrow(query_qtls)
+
+      if (
+        n_query == 0L ||
+        nrow(target_qtls) == 0L
+      ) {
+
+        n_match = 0L
+
+      } else {
+
+        query_gr =
+          make_frank_qtl_granges(
+            query_qtls,
+            pad = pad
+          )
+
+        target_gr =
+          make_frank_qtl_granges(
+            target_qtls,
+            pad = pad
+          )
+
+        # Exact Figure 3 overlap statistic:
+        # chromosome + gene must match and strand preserves
+        # the QTL effect direction.
+        overlap_count =
+          suppressWarnings(
+            GenomicRanges::countOverlaps(
+              query_gr,
+              target_gr,
+              ignore.strand = FALSE
+            )
+          )
+
+        n_match =
+          sum(
+            overlap_count > 0L
+          )
+      }
+
+      data.frame(
+        query = query,
+        target = target,
+        n_common_genes =
+          length(
+            intersect(
+              query_genes,
+              target_genes
+            )
+          ),
+        n_query_before_technical =
+          n_before_technical,
+        n_technical_excluded =
+          n_technical_excluded,
+        n_query_eligible =
+          n_query,
+        n_target_eligible =
+          sum(
+            target_qtls$gene_ID %in%
+            query_genes
+          ),
+        n_matches =
+          n_match,
+        observed_rediscovery =
+          if (n_query > 0L) {
+            n_match / n_query
+          } else {
+            NA_real_
+          },
+        stringsAsFactors = FALSE
+      )
+    }
+  )
+
+  observed =
+    do.call(
+      rbind,
+      out
+    )
+
+  idx = match(
+    observed$query,
+    study_design$study
+  )
+
+  observed$query_analyte =
+    study_design$analyte[idx]
+
+  observed$query_medium =
+    study_design$medium[idx]
+
+  observed$query_n =
+    study_design$n[idx]
+
+  idx = match(
+    observed$target,
+    study_design$study
+  )
+
+  observed$target_analyte =
+    study_design$analyte[idx]
+
+  observed$target_medium =
+    study_design$medium[idx]
+
+  observed$target_n =
+    study_design$n[idx]
+
+  observed$comparison = paste0(
+    observed$query_analyte,
+    "_to_",
+    observed$target_analyte
+  )
+
+  observed$same_medium =
+    observed$query_medium ==
+    observed$target_medium
+
+  observed$interval_padding_bp =
+    as.integer(pad)
+
+  observed$overlap_definition =
+    "Frank_Figure3_overlapsWithStrand"
+
+  observed
+}
+
+frank_qtls_list = load_single_rda(
+  paste0(
+    imed,
+    "Frank/qtls_list_260204.rda"
+  ),
+  object_name = "qtls_list"
 )
 
-observed_pairwise = build_observed_pairwise(
-  indiv_qtls = indivFullQTLs,
-  studies = studies,
-  study_design = study_design,
-  pad = 10000L
+frank_name_map = c(
+  Brem_2002 = "Brem_2002",
+  Brem_2005 = "Brem_2005",
+  SmithEth_2008 = "Smith_2008_Ethanol",
+  SmithGlc_2008 = "Smith_2008_Glucose",
+  Khan_2009 = "Khan_2009",
+  Foss_2011 = "Foss_2011",
+  Picotti_2013 = "Picotti_2013",
+  Albert_2018 = "Albert_2018",
+  GrossbachRNA_2022 = "Grossbach_2022_mRNA",
+  GrossbachPRT_2022 = "Grossbach_2022_protein"
 )
+
+missing_frank = setdiff(
+  unname(
+    frank_name_map
+  ),
+  names(
+    frank_qtls_list
+  )
+)
+
+if (length(missing_frank) > 0L) {
+  stop(
+    "Missing individual datasets from Frank QTL object: ",
+    paste(
+      missing_frank,
+      collapse = ", "
+    )
+  )
+}
+
+frank_individual_qtls = lapply(
+  frank_name_map,
+  function(name) {
+    frank_qtls_list[[name]]
+  }
+)
+
+names(
+  frank_individual_qtls
+) =
+  names(
+    frank_name_map
+  )
+
+chrFeatures = load_single_rda(
+  paste0(
+    raw,
+    "chrFeatures.rda"
+  ),
+  object_name = "chrFeatures"
+)
+
+technical_marker_ranges =
+  make_technical_marker_ranges(
+    chrFeatures
+  )
+
+frank_qtl_count_check = data.frame(
+  study =
+    study_design$study,
+  indivFullQTLs =
+    study_design$n_qtl,
+  frank_qtls_list =
+    vapply(
+      study_design$study,
+      function(study) {
+        nrow(
+          frank_individual_qtls[[study]]
+        )
+      },
+      integer(1)
+    ),
+  stringsAsFactors = FALSE
+)
+
+frank_qtl_count_check$match =
+  frank_qtl_count_check$indivFullQTLs ==
+  frank_qtl_count_check$frank_qtls_list
+
+if (!all(
+  frank_qtl_count_check$match
+)) {
+  stop(
+    "Frank/current QTL-count mismatch for: ",
+    paste(
+      frank_qtl_count_check$study[
+        !frank_qtl_count_check$match
+      ],
+      collapse = ", "
+    )
+  )
+}
+
+write.table(
+  frank_qtl_count_check,
+  file = paste0(
+    power_asys,
+    "frank_qtl_count_check.tsv"
+  ),
+  sep = "\t",
+  quote = FALSE,
+  row.names = FALSE
+)
+
+message(
+  "Frank QTL object matches current remap QTL counts for all 10 datasets."
+)
+
+message(
+  "Recomputing observed individual-study rediscovery using Frank Figure 3 logic..."
+)
+
+observed_pairwise =
+  build_observed_pairwise_frank(
+    qtl_by_study =
+      frank_individual_qtls,
+    studies =
+      studies,
+    study_design =
+      study_design,
+    technical_marker_ranges =
+      technical_marker_ranges,
+    pad = 10000L
+  )
+
+message(
+  "Fitting manuscript-style observed-overlap GLMM..."
+)
+
+observed_glmm_summary =
+  fit_observed_overlap_glmm(
+    observed_pairwise
+  )
 
 #########################
 # GENERAL POWER CURVES  #
@@ -983,7 +1544,7 @@ reference_lookup = make_probability_lookup(
   lod = lod_reference
 )
 
-effect_scales = c(0.25, 0.50, 0.75, 1.00)
+effect_scales = round(seq(0.20, 1.00, by = 0.05), 2)
 shared_rediscovery = do.call(
   rbind,
   lapply(
@@ -1300,7 +1861,7 @@ simulation_calibration = data.frame(
     "observed_pairwise_scope"
   ),
   value = c(
-    "10 independent individual-segregant remapping datasets; AlbertAlt_2018 excluded as duplicate coordinate representation",
+    "10 individual-segregant remapping datasets; AlbertAlt_2018 excluded as duplicate coordinate representation",
     "effects are defined after phenotype adjustment and standardization; covariates are not separately simulated",
     paste0(
       reference_study,
@@ -1309,7 +1870,7 @@ simulation_calibration = data.frame(
     "empirical resampling of absolute observed r values with replacement; no observed locus identity is reused as simulated truth",
     paste(effect_scales, collapse = ","),
     paste0(
-      "median recovered empirical 5% FDR LOD = ",
+      "median historical 5% FDR LOD calibration = ",
       signif(lod_reference, 6)
     ),
     paste(
@@ -1320,8 +1881,8 @@ simulation_calibration = data.frame(
       ),
       collapse = ";"
     ),
-    "query QTL interval padded 10 kb; target QTL for same measured gene must overlap and have same effect direction",
-    "individual-remap calibration uses genes measured in both datasets; rare manuscript pair-specific engineered/fixed-locus exclusions are not reapplied here"
+    "Frank Figure 3 overlapsWithStrand logic: CI_chr plus gene_ID defines the locus, both confidence intervals are padded 10 kb, and effect sign defines strand",
+    "individual-only Figure 3 calibration uses Frank qtls_list_260204, target-gene measurability, and pair-specific LEU2/MAT/URA3/AMN1/KRE33 exclusions"
   ),
   stringsAsFactors = FALSE
 )
@@ -1368,6 +1929,11 @@ write_table(
 write_table(
   observed_summary,
   "observed_individual_rediscovery_summary.tsv"
+)
+
+write_table(
+  observed_glmm_summary,
+  "observed_individual_rediscovery_glmm.tsv"
 )
 write_table(
   power_curves,
@@ -1441,6 +2007,7 @@ review_power = list(
   simulation_calibration = simulation_calibration,
   observed_pairwise = observed_pairwise,
   observed_summary = observed_summary,
+  observed_glmm_summary = observed_glmm_summary,
   power_curves = power_curves,
   validation = validation,
   shared_rediscovery = shared_rediscovery,
@@ -1746,4 +2313,1023 @@ message(
 message(
   "Outputs: ",
   power_asys
+)
+
+
+########################################
+########################################
+# FINAL PAIRWISE REVIEW POLISH         #
+########################################
+########################################
+
+canonicalize_review_seg = function(x) {
+
+  x = trimws(
+    as.character(x)
+  )
+
+  x = gsub(
+    "_",
+    ".",
+    x,
+    fixed = TRUE
+  )
+
+  gsub(
+    "\\s+",
+    "",
+    x
+  )
+}
+
+
+########################################
+# SHARED-SEGREGANT PANEL AUDIT         #
+########################################
+
+build_panel_overlap = function(
+  study_names,
+  studies
+) {
+
+  pair_grid = expand.grid(
+    query = study_names,
+    target = study_names,
+    stringsAsFactors = FALSE
+  )
+
+  pair_grid = pair_grid[
+    pair_grid$query !=
+    pair_grid$target,
+    ,
+    drop = FALSE
+  ]
+
+  do.call(
+    rbind,
+    lapply(
+      seq_len(
+        nrow(
+          pair_grid
+        )
+      ),
+      function(i) {
+
+        query =
+          pair_grid$query[[i]]
+
+        target =
+          pair_grid$target[[i]]
+
+        query_ids =
+          unique(
+            canonicalize_review_seg(
+              rownames(
+                studies[[query]]$pheno
+              )
+            )
+          )
+
+        target_ids =
+          unique(
+            canonicalize_review_seg(
+              rownames(
+                studies[[target]]$pheno
+              )
+            )
+          )
+
+        shared =
+          intersect(
+            query_ids,
+            target_ids
+          )
+
+        n_query =
+          length(
+            query_ids
+          )
+
+        n_target =
+          length(
+            target_ids
+          )
+
+        n_shared =
+          length(
+            shared
+          )
+
+        data.frame(
+          query = query,
+          target = target,
+          n_query =
+            n_query,
+          n_target =
+            n_target,
+          n_shared =
+            n_shared,
+          fraction_query_shared =
+            n_shared /
+            n_query,
+          fraction_target_shared =
+            n_shared /
+            n_target,
+          fraction_smaller_panel_shared =
+            n_shared /
+            min(
+              n_query,
+              n_target
+            ),
+          jaccard =
+            n_shared /
+            length(
+              union(
+                query_ids,
+                target_ids
+              )
+            ),
+          major_shared_panel =
+            n_shared >= 10L &
+            n_shared /
+            min(
+              n_query,
+              n_target
+            ) >= 0.50,
+          stringsAsFactors = FALSE
+        )
+      }
+    )
+  )
+}
+
+
+build_reuse_summary = function(
+  study_names,
+  studies,
+  metadata
+) {
+
+  dat =
+    do.call(
+      rbind,
+      lapply(
+        study_names,
+        function(study) {
+
+          idx =
+            match(
+              study,
+              metadata$study
+            )
+
+          data.frame(
+            segregant =
+              canonicalize_review_seg(
+                rownames(
+                  studies[[study]]$pheno
+                )
+              ),
+            study = study,
+            analyte =
+              metadata$analyte[[idx]],
+            stringsAsFactors = FALSE
+          )
+        }
+      )
+    )
+
+  reuse =
+    dat %>%
+    dplyr::group_by(
+      segregant
+    ) %>%
+    dplyr::summarise(
+      n_studies =
+        dplyr::n_distinct(
+          study
+        ),
+      n_analytes =
+        dplyr::n_distinct(
+          analyte
+        ),
+      studies =
+        paste(
+          sort(
+            unique(
+              study
+            )
+          ),
+          collapse = ";"
+        ),
+      .groups = "drop"
+    )
+
+  summary =
+    data.frame(
+      total_study_rows =
+        nrow(dat),
+      unique_segregants =
+        dplyr::n_distinct(
+          dat$segregant
+        ),
+      reused_segregants =
+        sum(
+          reuse$n_studies > 1L
+        ),
+      fraction_unique_reused =
+        mean(
+          reuse$n_studies > 1L
+        ),
+      maximum_studies_per_segregant =
+        max(
+          reuse$n_studies
+        ),
+      stringsAsFactors = FALSE
+    )
+
+  list(
+    reuse = reuse,
+    summary = summary
+  )
+}
+
+
+individual_panel_overlap =
+  build_panel_overlap(
+    study_names =
+      study_design$study,
+    studies =
+      studies
+  )
+
+joint_study_names =
+  intersect(
+    scaMetadata$study,
+    names(
+      studies
+    )
+  )
+
+joint_panel_overlap =
+  build_panel_overlap(
+    study_names =
+      joint_study_names,
+    studies =
+      studies
+  )
+
+joint_reuse =
+  build_reuse_summary(
+    study_names =
+      joint_study_names,
+    studies =
+      studies,
+    metadata =
+      scaMetadata
+  )
+
+
+########################################
+# FIGURE 3 SHARED-PANEL SENSITIVITY    #
+########################################
+
+observed_panel =
+  dplyr::left_join(
+    observed_pairwise,
+    individual_panel_overlap,
+    by = c(
+      "query",
+      "target"
+    )
+  )
+
+panel_scenarios =
+  list(
+    all_pairs =
+      rep(
+        TRUE,
+        nrow(
+          observed_panel
+        )
+      ),
+    exclude_major_shared_panels =
+      !observed_panel$major_shared_panel
+  )
+
+panel_sensitivity_raw =
+  do.call(
+    rbind,
+    lapply(
+      names(
+        panel_scenarios
+      ),
+      function(scenario) {
+
+        dat =
+          observed_panel[
+            panel_scenarios[[scenario]],
+            ,
+            drop = FALSE
+          ]
+
+        dat %>%
+          dplyr::group_by(
+            comparison
+          ) %>%
+          dplyr::summarise(
+            scenario =
+              scenario,
+            n_pairs =
+              dplyr::n(),
+            total_query_qtl =
+              sum(
+                n_query_eligible
+              ),
+            total_matches =
+              sum(
+                n_matches
+              ),
+            mean_rediscovery =
+              mean(
+                observed_rediscovery
+              ),
+            pooled_rediscovery =
+              total_matches /
+              total_query_qtl,
+            .groups = "drop"
+          )
+      }
+    )
+  )
+
+panel_sensitivity_glmm =
+  do.call(
+    rbind,
+    lapply(
+      names(
+        panel_scenarios
+      ),
+      function(scenario) {
+
+        dat =
+          observed_panel[
+            panel_scenarios[[scenario]],
+            ,
+            drop = FALSE
+          ]
+
+        fit =
+          tryCatch(
+            fit_observed_overlap_glmm(
+              dat
+            ),
+            error = function(e) {
+              NULL
+            }
+          )
+
+        if (is.null(fit)) {
+
+          return(
+            data.frame(
+              comparison =
+                NA_character_,
+              estimate_logit =
+                NA_real_,
+              se_logit =
+                NA_real_,
+              adjusted_agreement =
+                NA_real_,
+              adjusted_lower_95 =
+                NA_real_,
+              adjusted_upper_95 =
+                NA_real_,
+              singular_fit =
+                NA,
+              n_pairs =
+                nrow(dat),
+              scenario =
+                scenario,
+              stringsAsFactors = FALSE
+            )
+          )
+        }
+
+        fit$scenario =
+          scenario
+
+        fit
+      }
+    )
+  )
+
+
+########################################
+# ANALYTIC FIGURE 3 CHANCE NULL        #
+########################################
+
+make_chr_lengths = function(
+  chr_features
+) {
+
+  chr =
+    normalize_yeast_chr(
+      chr_features$Chromosome
+    )
+
+  left =
+    suppressWarnings(
+      as.numeric(
+        chr_features$Start_Coordinate
+      )
+    )
+
+  right =
+    suppressWarnings(
+      as.numeric(
+        chr_features$Stop_Coordinate
+      )
+    )
+
+  endpoint =
+    pmax(
+      left,
+      right,
+      na.rm = TRUE
+    )
+
+  keep =
+    chr %in%
+    as.character(1:16) &
+    is.finite(endpoint)
+
+  lengths =
+    tapply(
+      endpoint[keep],
+      chr[keep],
+      max,
+      na.rm = TRUE
+    )
+
+  lengths =
+    lengths[
+      as.character(1:16)
+    ]
+
+  if (
+    length(lengths) != 16L ||
+    any(!is.finite(lengths))
+  ) {
+    stop(
+      "Could not determine all chromosome lengths."
+    )
+  }
+
+  lengths
+}
+
+
+prepare_frank_query_for_null = function(
+  query,
+  target,
+  pad = 10000L
+) {
+
+  target_genes =
+    colnames(
+      studies[[target]]$pheno
+    )
+
+  qtls =
+    frank_individual_qtls[[
+      query
+    ]]
+
+  qtls =
+    qtls[
+      qtls$gene_ID %in%
+      target_genes,
+      ,
+      drop = FALSE
+    ]
+
+  tech =
+    frank_technical_markers()
+
+  exclude =
+    setdiff(
+      tech[[query]],
+      tech[[target]]
+    )
+
+  if (
+    nrow(qtls) > 0L &&
+    length(exclude) > 0L
+  ) {
+
+    left =
+      pmin(
+        as.numeric(
+          qtls$CI_min_base
+        ),
+        as.numeric(
+          qtls$CI_max_base
+        )
+      )
+
+    right =
+      pmax(
+        as.numeric(
+          qtls$CI_min_base
+        ),
+        as.numeric(
+          qtls$CI_max_base
+        )
+      )
+
+    gr =
+      GenomicRanges::GRanges(
+        seqnames =
+          normalize_yeast_chr(
+            qtls$CI_chr
+          ),
+        ranges =
+          IRanges::IRanges(
+            start =
+              pmax(
+                1,
+                left -
+                as.integer(pad)
+              ),
+            end =
+              right +
+              as.integer(pad)
+          )
+      )
+
+    hit =
+      suppressWarnings(
+        GenomicRanges::countOverlaps(
+          gr,
+          technical_marker_ranges[
+            exclude
+          ],
+          ignore.strand = TRUE
+        )
+      ) > 0L
+
+    qtls =
+      qtls[
+        !hit,
+        ,
+        drop = FALSE
+      ]
+  }
+
+  qtls
+}
+
+
+chance_overlap_pair = function(
+  query,
+  target,
+  chromosome_lengths,
+  pad = 10000L
+) {
+
+  query_qtls =
+    prepare_frank_query_for_null(
+      query = query,
+      target = target,
+      pad = pad
+    )
+
+  target_qtls =
+    frank_individual_qtls[[
+      target
+    ]]
+
+  if (
+    nrow(query_qtls) == 0L
+  ) {
+    return(
+      data.frame(
+        query = query,
+        target = target,
+        n_query_eligible = 0L,
+        expected_chance_matches = 0,
+        chance_rediscovery = NA_real_,
+        stringsAsFactors = FALSE
+      )
+    )
+  }
+
+  q_chr =
+    normalize_yeast_chr(
+      query_qtls$CI_chr
+    )
+
+  t_chr =
+    normalize_yeast_chr(
+      target_qtls$CI_chr
+    )
+
+  q_key =
+    paste(
+      q_chr,
+      query_qtls$gene_ID,
+      sign(
+        query_qtls$cor_coef
+      ),
+      sep = "::"
+    )
+
+  t_key =
+    paste(
+      t_chr,
+      target_qtls$gene_ID,
+      sign(
+        target_qtls$cor_coef
+      ),
+      sep = "::"
+    )
+
+  target_groups =
+    split(
+      seq_len(
+        nrow(
+          target_qtls
+        )
+      ),
+      t_key
+    )
+
+  q_left =
+    pmin(
+      as.numeric(
+        query_qtls$CI_min_base
+      ),
+      as.numeric(
+        query_qtls$CI_max_base
+      )
+    )
+
+  q_right =
+    pmax(
+      as.numeric(
+        query_qtls$CI_min_base
+      ),
+      as.numeric(
+        query_qtls$CI_max_base
+      )
+    )
+
+  t_left =
+    pmin(
+      as.numeric(
+        target_qtls$CI_min_base
+      ),
+      as.numeric(
+        target_qtls$CI_max_base
+      )
+    )
+
+  t_right =
+    pmax(
+      as.numeric(
+        target_qtls$CI_min_base
+      ),
+      as.numeric(
+        target_qtls$CI_max_base
+      )
+    )
+
+  target_width =
+    t_right -
+    t_left
+
+  probability =
+    vapply(
+      seq_len(
+        nrow(
+          query_qtls
+        )
+      ),
+      function(i) {
+
+        idx =
+          target_groups[[
+            q_key[[i]]
+          ]]
+
+        if (
+          is.null(idx) ||
+          length(idx) == 0L
+        ) {
+          return(0)
+        }
+
+        chr_length =
+          unname(
+            chromosome_lengths[
+              q_chr[[i]]
+            ]
+          )
+
+        widths =
+          target_width[idx]
+
+        n_starts =
+          floor(
+            chr_length -
+            widths +
+            1
+          )
+
+        valid =
+          is.finite(n_starts) &
+          n_starts >= 1
+
+        if (!any(valid)) {
+          return(0)
+        }
+
+        widths =
+          widths[valid]
+
+        n_starts =
+          n_starts[valid]
+
+        # Both query and target are padded 10 kb.
+        lower =
+          q_left[[i]] -
+          widths -
+          2 * as.integer(pad)
+
+        upper =
+          q_right[[i]] +
+          2 * as.integer(pad)
+
+        allowed_low =
+          pmax(
+            1,
+            ceiling(lower)
+          )
+
+        allowed_high =
+          pmin(
+            n_starts,
+            floor(upper)
+          )
+
+        n_allowed =
+          pmax(
+            0,
+            allowed_high -
+            allowed_low +
+            1
+          )
+
+        p_each =
+          pmin(
+            1,
+            n_allowed /
+            n_starts
+          )
+
+        1 -
+          prod(
+            1 -
+            p_each
+          )
+      },
+      numeric(1)
+    )
+
+  data.frame(
+    query = query,
+    target = target,
+    n_query_eligible =
+      nrow(
+        query_qtls
+      ),
+    expected_chance_matches =
+      sum(
+        probability
+      ),
+    chance_rediscovery =
+      mean(
+        probability
+      ),
+    stringsAsFactors = FALSE
+  )
+}
+
+
+chromosome_lengths =
+  make_chr_lengths(
+    chrFeatures
+  )
+
+message(
+  "Calculating Figure 3 chance-overlap null..."
+)
+
+chance_overlap_null =
+  do.call(
+    rbind,
+    lapply(
+      seq_len(
+        nrow(
+          observed_pairwise
+        )
+      ),
+      function(i) {
+
+        obs =
+          observed_pairwise[
+            i,
+            ,
+            drop = FALSE
+          ]
+
+        null =
+          chance_overlap_pair(
+            query =
+              obs$query[[1]],
+            target =
+              obs$target[[1]],
+            chromosome_lengths =
+              chromosome_lengths,
+            pad = 10000L
+          )
+
+        if (
+          null$n_query_eligible !=
+          obs$n_query_eligible
+        ) {
+          stop(
+            "Chance-null denominator mismatch for ",
+            obs$query[[1]],
+            " -> ",
+            obs$target[[1]]
+          )
+        }
+
+        null$n_matches =
+          obs$n_matches
+
+        null$observed_rediscovery =
+          obs$observed_rediscovery
+
+        null$comparison =
+          obs$comparison
+
+        null
+      }
+    )
+  )
+
+chance_null_definition =
+  data.frame(
+    item = c(
+      "null_model",
+      "fixed_query_information",
+      "randomized_quantity",
+      "preserved_target_information",
+      "overlap_definition"
+    ),
+    value = c(
+      "independent target-QTL position randomization within chromosome",
+      "Figure 3-eligible query QTLs after target-gene and technical-marker exclusions",
+      "target-QTL genomic position",
+      "gene, chromosome, effect direction, confidence-interval width, and QTL count",
+      "same gene, chromosome, effect direction, and overlapping confidence intervals after 10-kb padding of both intervals"
+    ),
+    stringsAsFactors = FALSE
+  )
+
+chance_overlap_summary =
+  chance_overlap_null %>%
+  dplyr::group_by(
+    comparison
+  ) %>%
+  dplyr::summarise(
+    n_pairs =
+      dplyr::n(),
+    total_query_qtl =
+      sum(
+        n_query_eligible
+      ),
+    observed_matches =
+      sum(
+        n_matches
+      ),
+    expected_chance_matches =
+      sum(
+        expected_chance_matches
+      ),
+    mean_observed =
+      mean(
+        observed_rediscovery
+      ),
+    mean_chance =
+      mean(
+        chance_rediscovery
+      ),
+    pooled_observed =
+      observed_matches /
+      total_query_qtl,
+    pooled_chance =
+      expected_chance_matches /
+      total_query_qtl,
+    .groups = "drop"
+  )
+
+
+########################################
+# SAVE POLISH OUTPUTS                  #
+########################################
+
+write_table(
+  individual_panel_overlap,
+  "segregant_overlap_individual_studies.tsv"
+)
+
+write_table(
+  joint_panel_overlap,
+  "segregant_overlap_joint_sc_studies.tsv"
+)
+
+write_table(
+  joint_reuse$reuse,
+  "segregant_reuse_joint_sc.tsv"
+)
+
+write_table(
+  joint_reuse$summary,
+  "segregant_reuse_joint_sc_summary.tsv"
+)
+
+write_table(
+  panel_sensitivity_raw,
+  "pairwise_shared_panel_sensitivity_raw.tsv"
+)
+
+write_table(
+  panel_sensitivity_glmm,
+  "pairwise_shared_panel_sensitivity_glmm.tsv"
+)
+
+write_table(
+  chance_overlap_null,
+  "chance_overlap_null.tsv"
+)
+
+write_table(
+  chance_overlap_summary,
+  "chance_overlap_null_summary.tsv"
+)
+
+write_table(
+  chance_null_definition,
+  "chance_overlap_null_definition.tsv"
+)
+
+review_power$individual_panel_overlap =
+  individual_panel_overlap
+
+review_power$joint_panel_overlap =
+  joint_panel_overlap
+
+review_power$joint_reuse =
+  joint_reuse
+
+review_power$panel_sensitivity_raw =
+  panel_sensitivity_raw
+
+review_power$panel_sensitivity_glmm =
+  panel_sensitivity_glmm
+
+review_power$chance_overlap_null =
+  chance_overlap_null
+
+review_power$chance_overlap_summary =
+  chance_overlap_summary
+
+
+review_power$chance_null_definition =
+  chance_null_definition
+
+saveRDS(
+  review_power,
+  paste0(
+    power_imed,
+    "review_power.rds"
+  )
+)
+
+message(
+  "Final pairwise reviewer polish complete."
 )
