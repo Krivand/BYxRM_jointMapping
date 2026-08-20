@@ -11,52 +11,39 @@
 
 source("/PHShome/kv1026/p05/remap_functions.R")
 
-review_asys = paste0(
-  asys,
-  "review/missingness/"
-)
-
+review_asys = paste0(asys, "review/missingness/")
 ensure_directory(review_asys)
 
 summary_rows = list()
-removed_row_rows = list()
-removed_col_rows = list()
-threshold_check_rows = list()
+removed_rows = list()
 
 ###################
 # AUDIT FUNCTIONS #
 ###################
 
-append_removed = function(
-  destination,
-  dataset,
-  margin,
-  unit,
-  values
-) {
-
-  if (length(values) == 0L) {
-    return(destination)
+record_removed = function(dataset, margin, unit, ids) {
+  if (length(ids) == 0L) {
+    return(invisible(NULL))
   }
 
-  destination[[length(destination) + 1L]] = data.frame(
+  removed_rows[[length(removed_rows) + 1L]] <<- data.frame(
     dataset = dataset,
     margin = margin,
     unit = unit,
-    id = as.character(values),
+    id = as.character(ids),
     stringsAsFactors = FALSE
   )
 
-  destination
+  invisible(NULL)
 }
 
-audit_rmIterNA = function(
+audit_filter = function(
   x,
   dataset,
   row_unit,
-  col_unit
+  col_unit,
+  apply_filter = TRUE
 ) {
-
   if (is.null(dim(x)) || length(dim(x)) != 2L) {
     stop("Expected a two-dimensional object for ", dataset, ".")
   }
@@ -65,32 +52,51 @@ audit_rmIterNA = function(
   before_cols = colnames(x)
   before_dim = dim(x)
 
-  filtered = rmIterNA(
-    x,
-    t = threshNA
-  )
+  if (isTRUE(apply_filter)) {
+    filtered = rmIterNA(x, t = threshNA)
+  } else {
+    filtered = x
+  }
 
   after_rows = rownames(filtered)
   after_cols = colnames(filtered)
   after_dim = dim(filtered)
 
-  removed_rows =
-    if (!is.null(before_rows) && !is.null(after_rows)) {
-      before_rows[!(before_rows %in% after_rows)]
-    } else {
-      character(0)
-    }
+  removed_row_ids = if (!is.null(before_rows) && !is.null(after_rows)) {
+    before_rows[!(before_rows %in% after_rows)]
+  } else {
+    character(0)
+  }
 
-  removed_cols =
-    if (!is.null(before_cols) && !is.null(after_cols)) {
-      before_cols[!(before_cols %in% after_cols)]
+  removed_col_ids = if (!is.null(before_cols) && !is.null(after_cols)) {
+    before_cols[!(before_cols %in% after_cols)]
+  } else {
+    character(0)
+  }
+
+  row_missing_fraction = if (is.data.frame(x)) {
+    numeric_cols = vapply(x, is.numeric, logical(1))
+    if (sum(numeric_cols) > 0L) {
+      rowMeans(is.na(x[, numeric_cols, drop = FALSE]))
     } else {
-      character(0)
+      rep(NA_real_, nrow(x))
     }
+  } else {
+    rowMeans(is.na(x))
+  }
+
+  col_missing_fraction = if (is.data.frame(x)) {
+    numeric_cols = vapply(x, is.numeric, logical(1))
+    out = rep(NA_real_, ncol(x))
+    out[numeric_cols] = colMeans(is.na(x[, numeric_cols, drop = FALSE]))
+    out
+  } else {
+    colMeans(is.na(x))
+  }
 
   summary_rows[[length(summary_rows) + 1L]] <<- data.frame(
     dataset = dataset,
-    filter_applied = TRUE,
+    filter_applied = isTRUE(apply_filter),
     row_unit = row_unit,
     col_unit = col_unit,
     n_rows_before = before_dim[1],
@@ -99,89 +105,100 @@ audit_rmIterNA = function(
     n_cols_before = before_dim[2],
     n_cols_after = after_dim[2],
     n_cols_removed = before_dim[2] - after_dim[2],
+    n_rows_at_or_above_25pct_before = sum(
+      row_missing_fraction >= threshNA,
+      na.rm = TRUE
+    ),
+    n_cols_at_or_above_25pct_before = sum(
+      col_missing_fraction >= threshNA,
+      na.rm = TRUE
+    ),
     stringsAsFactors = FALSE
   )
 
-  removed_row_rows <<- append_removed(
-    removed_row_rows,
-    dataset = dataset,
-    margin = "row",
-    unit = row_unit,
-    values = removed_rows
+  record_removed(
+    dataset,
+    "row",
+    row_unit,
+    removed_row_ids
   )
 
-  removed_col_rows <<- append_removed(
-    removed_col_rows,
-    dataset = dataset,
-    margin = "column",
-    unit = col_unit,
-    values = removed_cols
+  record_removed(
+    dataset,
+    "column",
+    col_unit,
+    removed_col_ids
   )
 
-  filtered
+  list(
+    filtered = filtered,
+    removed_rows = removed_row_ids,
+    removed_cols = removed_col_ids
+  )
 }
 
-audit_threshold_only = function(
-  x,
-  dataset,
-  row_unit,
-  col_unit
-) {
+read_gds_soft_table = function(path) {
+  lines = readLines(path, warn = FALSE)
 
-  x = as.matrix(x)
-
-  row_frac = rowMeans(is.na(x))
-  col_frac = colMeans(is.na(x))
-
-  row_hits = which(row_frac >= threshNA)
-  col_hits = which(col_frac >= threshNA)
-
-  threshold_check_rows[[length(threshold_check_rows) + 1L]] <<- data.frame(
-    dataset = dataset,
-    filter_applied = FALSE,
-    row_unit = row_unit,
-    col_unit = col_unit,
-    n_rows = nrow(x),
-    n_rows_at_or_above_25pct = length(row_hits),
-    n_cols = ncol(x),
-    n_cols_at_or_above_25pct = length(col_hits),
-    stringsAsFactors = FALSE
+  begin = grep(
+    "^!dataset_table_begin",
+    lines,
+    ignore.case = TRUE
+  )
+  end = grep(
+    "^!dataset_table_end",
+    lines,
+    ignore.case = TRUE
   )
 
-  invisible(NULL)
-}
-
-prepare_brem_gds = function(
-  filename
-) {
-
-  if (!requireNamespace("GEOquery", quietly = TRUE)) {
-    stop(
-      "GEOquery is required to audit Brem SOFT files. ",
-      "Install/load it in the project environment and rerun."
-    )
+  if (length(begin) != 1L || length(end) != 1L || end <= begin) {
+    stop("Could not identify a single dataset table in ", path, ".")
   }
 
-  datGDS = GEOquery::getGEO(
-    filename = paste0(
-      raw,
-      filename
-    )
-  ) %>%
-    GEOquery::Table()
+  table_lines = lines[(begin + 1L):(end - 1L)]
 
-  datGDS[, 3:ncol(datGDS)] = apply(
-    as.matrix(
-      datGDS[, -c(1:2)]
-    ),
-    2,
-    function(x) {
-      x - mean(
-        x[which(datGDS$IDENTIFIER == "blank")],
-        na.rm = TRUE
-      )
-    }
+  dat = read.delim(
+    text = paste(table_lines, collapse = "\n"),
+    header = TRUE,
+    sep = "\t",
+    quote = "",
+    comment.char = "",
+    check.names = FALSE,
+    stringsAsFactors = FALSE,
+    na.strings = c("NA", "null", "NULL")
   )
+
+  if (!("IDENTIFIER" %in% colnames(dat))) {
+    stop("IDENTIFIER column not found in ", path, ".")
+  }
+
+  if (ncol(dat) < 3L) {
+    stop("Unexpected SOFT table dimensions in ", path, ".")
+  }
+
+  for (j in 3:ncol(dat)) {
+    dat[[j]] = suppressWarnings(as.numeric(dat[[j]]))
+  }
+
+  dat
+}
+
+prepare_brem_gds = function(filename) {
+  datGDS = read_gds_soft_table(
+    paste0(raw, filename)
+  )
+
+  blank_rows = which(datGDS$IDENTIFIER == "blank")
+
+  if (length(blank_rows) > 0L) {
+    datGDS[, 3:ncol(datGDS)] = apply(
+      as.matrix(datGDS[, -c(1:2), drop = FALSE]),
+      2,
+      function(x) {
+        x - mean(x[blank_rows], na.rm = TRUE)
+      }
+    )
+  }
 
   datGDS$IDENTIFIER = dictReplace(
     datGDS$IDENTIFIER,
@@ -198,9 +215,7 @@ prepare_brem_gds = function(
   ]
 
   rownames(datGDS) = make.unique(
-    as.character(
-      datGDS$IDENTIFIER
-    )
+    as.character(datGDS$IDENTIFIER)
   )
 
   datGDS
@@ -210,12 +225,7 @@ prepare_brem_gds = function(
 # LOAD FEATURE METADATA #
 ########################
 
-load(
-  paste0(
-    raw,
-    "chrFeatures.rda"
-  )
-)
+load(paste0(raw, "chrFeatures.rda"))
 
 ########################
 # BREM 2002 AND 2005   #
@@ -229,15 +239,18 @@ brem_files = list(
 )
 
 for (dataset in names(brem_files)) {
+  message("Auditing ", dataset, "...")
+
   dat = prepare_brem_gds(
     brem_files[[dataset]]
   )
 
-  audit_rmIterNA(
+  audit_filter(
     dat,
     dataset = dataset,
     row_unit = "ORF/probe row",
-    col_unit = "array"
+    col_unit = "array",
+    apply_filter = TRUE
   )
 
   rm(dat)
@@ -248,33 +261,19 @@ for (dataset in names(brem_files)) {
 # SMITH 2008           #
 ########################
 
+message("Auditing Smith 2008...")
+
 Smith_2008_pheno = readxl::read_excel(
-  paste0(
-    raw,
-    "pbio.0060083.sd002.xls"
-  )
+  paste0(raw, "pbio.0060083.sd002.xls")
 ) %>%
   as.data.frame()
 
 rownames(Smith_2008_pheno) = sapply(
   Smith_2008_pheno$NAME,
-  function(x) strsplit(
-    x,
-    "\\|\\|"
-  )
+  function(x) strsplit(x, "\\|\\|")
 ) %>%
-  (function(x) sapply(
-    x,
-    function(y) y[4]
-  )) %>%
-  (function(x) sapply(
-    x,
-    function(y) gsub(
-      " ",
-      "",
-      y
-    )
-  ))
+  (function(x) sapply(x, function(y) y[4])) %>%
+  (function(x) sapply(x, function(y) gsub(" ", "", y)))
 
 Smith_2008_pheno = Smith_2008_pheno[, -c(1:2)]
 nuCol = rownames(Smith_2008_pheno)
@@ -293,52 +292,42 @@ rownames(Smith_2008_pheno) = nuRow
 
 SmithMeta = sapply(
   nuRow,
-  function(x) strsplit(
-    x,
-    " "
-  )
+  function(x) strsplit(x, " ")
 ) %>%
-  (function(x) do.call(
-    rbind,
-    x
-  )) %>%
-  `colnames<-`(c(
-    "id",
-    "segregant",
-    "condition"
-  )) %>%
+  (function(x) do.call(rbind, x)) %>%
+  `colnames<-`(c("id", "segregant", "condition")) %>%
   as.data.frame()
 
 SmithEth_2008_pheno = Smith_2008_pheno[
-  which(SmithMeta$condition == "ethanol"),
+  SmithMeta$condition == "ethanol",
   ,
   drop = FALSE
 ]
 rownames(SmithEth_2008_pheno) = SmithMeta$segregant[
-  which(SmithMeta$condition == "ethanol")
+  SmithMeta$condition == "ethanol"
 ]
 
 SmithGlc_2008_pheno = Smith_2008_pheno[
-  which(SmithMeta$condition == "glucose"),
+  SmithMeta$condition == "glucose",
   ,
   drop = FALSE
 ]
 rownames(SmithGlc_2008_pheno) = SmithMeta$segregant[
-  which(SmithMeta$condition == "glucose")
+  SmithMeta$condition == "glucose"
 ]
 
-audit_rmIterNA(
+audit_filter(
   SmithEth_2008_pheno,
-  dataset = "SmithEth_2008",
-  row_unit = "segregant",
-  col_unit = "gene"
+  "SmithEth_2008",
+  "segregant",
+  "gene"
 )
 
-audit_rmIterNA(
+audit_filter(
   SmithGlc_2008_pheno,
-  dataset = "SmithGlc_2008",
-  row_unit = "segregant",
-  col_unit = "gene"
+  "SmithGlc_2008",
+  "segregant",
+  "gene"
 )
 
 rm(
@@ -349,29 +338,27 @@ rm(
   nuCol,
   nuRow
 )
-
 gc()
 
 ########################
 # KHAN 2009            #
 ########################
 
+message("Auditing Khan 2009...")
+
 Khan_2009_pheno = read.delim(
-  paste0(
-    raw,
-    "Khan_2009_protein.tsv"
-  ),
+  paste0(raw, "Khan_2009_protein.tsv"),
   sep = "\t",
   row.names = 1,
   check.names = FALSE
 ) %>%
   as.matrix()
 
-audit_rmIterNA(
+audit_filter(
   Khan_2009_pheno,
-  dataset = "Khan_2009",
-  row_unit = "gene",
-  col_unit = "segregant"
+  "Khan_2009",
+  "gene",
+  "segregant"
 )
 
 rm(Khan_2009_pheno)
@@ -381,11 +368,10 @@ gc()
 # FOSS 2011            #
 ########################
 
+message("Auditing Foss 2011...")
+
 Foss_2011_pheno = readxl::read_excel(
-  paste0(
-    raw,
-    "foss_11_protein_measures.xls"
-  )
+  paste0(raw, "foss_11_protein_measures.xls")
 ) %>%
   as.data.frame()
 
@@ -396,21 +382,17 @@ Foss_2011_pheno = Foss_2011_pheno[, -c(1:3)] %>%
   mutate_all(as.numeric) %>%
   as.matrix()
 
-colnames(Foss_2011_pheno) = colnames(Foss_2011_pheno) %>%
-  (function(x) sapply(
-    x,
-    function(y) gsub(
-      "_",
-      ".",
-      y
-    )
-  ))
+colnames(Foss_2011_pheno) = gsub(
+  "_",
+  ".",
+  colnames(Foss_2011_pheno)
+)
 
-audit_rmIterNA(
+audit_filter(
   Foss_2011_pheno,
-  dataset = "Foss_2011",
-  row_unit = "gene",
-  col_unit = "segregant"
+  "Foss_2011",
+  "gene",
+  "segregant"
 )
 
 rm(Foss_2011_pheno)
@@ -420,48 +402,43 @@ gc()
 # PICOTTI 2013         #
 ########################
 
+message("Checking Picotti 2013...")
+
 Picotti_2013_pheno = read.csv(
-  paste0(
-    raw,
-    "Picotti_2013_SRM_dataset.csv"
-  ),
+  paste0(raw, "Picotti_2013_SRM_dataset.csv"),
   check.names = FALSE
 )
 
-picotti_numeric = Picotti_2013_pheno[, -1, drop = FALSE] %>%
-  as.matrix()
-
+picotti_numeric = as.matrix(
+  Picotti_2013_pheno[, -1, drop = FALSE]
+)
 storage.mode(picotti_numeric) = "numeric"
 
-audit_threshold_only(
+audit_filter(
   picotti_numeric,
-  dataset = "Picotti_2013",
-  row_unit = "protein measurement",
-  col_unit = "strain measurement"
+  "Picotti_2013",
+  "protein measurement",
+  "strain measurement",
+  apply_filter = FALSE
 )
 
-rm(
-  Picotti_2013_pheno,
-  picotti_numeric
-)
+rm(Picotti_2013_pheno, picotti_numeric)
 gc()
 
 ########################
 # ALBERT 2018          #
 ########################
 
-load(
-  paste0(
-    raw,
-    "log2_t.tpm.matrix.RData"
-  )
-)
+message("Checking Albert 2018...")
 
-audit_threshold_only(
+load(paste0(raw, "log2_t.tpm.matrix.RData"))
+
+audit_filter(
   t.tpm.matrix,
-  dataset = "Albert_2018",
-  row_unit = "segregant",
-  col_unit = "gene"
+  "Albert_2018",
+  "segregant",
+  "gene",
+  apply_filter = FALSE
 )
 
 rm(t.tpm.matrix)
@@ -471,109 +448,105 @@ gc()
 # GROSSBACH 2022 RNA   #
 ########################
 
+message("Checking Grossbach 2022 RNA...")
+
 grossbach_rna = readxl::read_excel(
-  paste0(
-    raw,
-    "msb202110712-sup-0003-datasetev1.xlsx"
-  ),
+  paste0(raw, "msb202110712-sup-0003-datasetev1.xlsx"),
   sheet = "transcriptome"
 ) %>%
   as.data.frame()
 
 grossbach_rna_genes = grossbach_rna$gene
-grossbach_rna = t(
-  grossbach_rna[, -1]
-)
+grossbach_rna = t(grossbach_rna[, -1])
 colnames(grossbach_rna) = grossbach_rna_genes
 
-audit_threshold_only(
+audit_filter(
   grossbach_rna,
-  dataset = "GrossbachRNA_2022",
-  row_unit = "culture measurement",
-  col_unit = "gene"
+  "GrossbachRNA_2022",
+  "culture measurement",
+  "gene",
+  apply_filter = FALSE
 )
 
-rm(
-  grossbach_rna,
-  grossbach_rna_genes
-)
+rm(grossbach_rna, grossbach_rna_genes)
 gc()
 
 ########################
 # GROSSBACH 2022 PRT   #
 ########################
 
+message("Auditing Grossbach 2022 protein...")
+
 grossbach_prt = readxl::read_excel(
-  paste0(
-    raw,
-    "msb202110712-sup-0003-datasetev1.xlsx"
-  ),
+  paste0(raw, "msb202110712-sup-0003-datasetev1.xlsx"),
   sheet = "proteome",
   na = "NA"
 ) %>%
   as.data.frame()
 
 grossbach_prt_genes = grossbach_prt$gene
-grossbach_prt = t(
-  grossbach_prt[, -1]
-)
+grossbach_prt = t(grossbach_prt[, -1])
 colnames(grossbach_prt) = grossbach_prt_genes
 
-grossbach_prt_filtered = audit_rmIterNA(
+grossbach_prt_audit = audit_filter(
   grossbach_prt,
-  dataset = "GrossbachPRT_2022",
-  row_unit = "culture measurement",
-  col_unit = "gene"
+  "GrossbachPRT_2022",
+  "culture measurement",
+  "gene",
+  apply_filter = TRUE
 )
 
 Grossbach_2022_meta = readxl::read_excel(
-  paste0(
-    raw,
-    "msb202110712-sup-0005-datasetev3.xlsx"
-  ),
+  paste0(raw, "msb202110712-sup-0005-datasetev3.xlsx"),
   sheet = "metadata"
 ) %>%
   as.data.frame()
 
-Grossbach_2022_meta$strain = Grossbach_2022_meta$strain %>%
-  unifyChain(c(
-    "BY",
-    "RM"
-  ))
-
-removed_grossbach_prt_cultures = setdiff(
-  rownames(grossbach_prt),
-  rownames(grossbach_prt_filtered)
+Grossbach_2022_meta$strain = unifyChain(
+  Grossbach_2022_meta$strain,
+  c("BY", "RM")
 )
 
-removed_grossbach_prt_strains = Grossbach_2022_meta$strain[
+before_strains = Grossbach_2022_meta$strain[
+  match(rownames(grossbach_prt), Grossbach_2022_meta$culture)
+]
+after_strains = Grossbach_2022_meta$strain[
   match(
-    removed_grossbach_prt_cultures,
+    rownames(grossbach_prt_audit$filtered),
     Grossbach_2022_meta$culture
   )
 ]
 
-removed_grossbach_prt_strains = unique(
-  removed_grossbach_prt_strains[
-    !is.na(removed_grossbach_prt_strains) &
-      !(removed_grossbach_prt_strains %in% c("BY", "RM"))
+before_strains = unique(
+  before_strains[
+    !is.na(before_strains) &
+      !(before_strains %in% c("BY", "RM"))
+  ]
+)
+after_strains = unique(
+  after_strains[
+    !is.na(after_strains) &
+      !(after_strains %in% c("BY", "RM"))
   ]
 )
 
-grossbach_prt_strain_summary = data.frame(
+grossbach_prt_strain_loss = data.frame(
   dataset = "GrossbachPRT_2022",
-  n_culture_measurements_removed_by_missingness =
-    length(removed_grossbach_prt_cultures),
-  n_unique_nonparent_strains_touched =
-    length(removed_grossbach_prt_strains),
+  n_nonparent_strains_before_missingness = length(before_strains),
+  n_nonparent_strains_after_missingness = length(after_strains),
+  n_nonparent_strains_lost_to_missingness = length(
+    setdiff(before_strains, after_strains)
+  ),
   stringsAsFactors = FALSE
 )
 
 rm(
   grossbach_prt,
   grossbach_prt_genes,
-  grossbach_prt_filtered,
-  Grossbach_2022_meta
+  grossbach_prt_audit,
+  Grossbach_2022_meta,
+  before_strains,
+  after_strains
 )
 gc()
 
@@ -597,25 +570,17 @@ mapping_studies = c(
 mapping_dimensions = lapply(
   mapping_studies,
   function(study_name) {
-    env = new.env(
-      parent = emptyenv()
-    )
-
+    env = new.env(parent = emptyenv())
     load(
-      paste0(
-        imed,
-        study_name,
-        ".rda"
-      ),
+      paste0(imed, study_name, ".rda"),
       envir = env
     )
-
     study = env[[study_name]]
 
     data.frame(
       dataset = study_name,
       final_n_segregants = nrow(study$pheno),
-      final_n_genes = ncol(study$pheno),
+      final_n_features = ncol(study$pheno),
       stringsAsFactors = FALSE
     )
   }
@@ -626,43 +591,25 @@ mapping_dimensions = lapply(
 # WRITE OUTPUT #
 ################
 
-missingness_summary = bind_rows(
-  summary_rows
-)
+missingness_summary = bind_rows(summary_rows)
 
-removed_rows =
-  if (length(removed_row_rows) > 0L) {
-    bind_rows(removed_row_rows)
-  } else {
-    data.frame(
-      dataset = character(0),
-      margin = character(0),
-      unit = character(0),
-      id = character(0)
-    )
-  }
-
-removed_columns =
-  if (length(removed_col_rows) > 0L) {
-    bind_rows(removed_col_rows)
-  } else {
-    data.frame(
-      dataset = character(0),
-      margin = character(0),
-      unit = character(0),
-      id = character(0)
-    )
-  }
-
-threshold_checks = bind_rows(
-  threshold_check_rows
-)
+removed_ids = if (length(removed_rows) > 0L) {
+  bind_rows(removed_rows)
+} else {
+  data.frame(
+    dataset = character(0),
+    margin = character(0),
+    unit = character(0),
+    id = character(0),
+    stringsAsFactors = FALSE
+  )
+}
 
 write.table(
   missingness_summary,
   file = paste0(
     review_asys,
-    "phenotype_missingness_filter_summary.tsv"
+    "missingness_filter_summary.tsv"
   ),
   sep = "\t",
   quote = FALSE,
@@ -670,10 +617,10 @@ write.table(
 )
 
 write.table(
-  removed_rows,
+  removed_ids,
   file = paste0(
     review_asys,
-    "phenotype_missingness_removed_rows.tsv"
+    "missingness_removed_ids.tsv"
   ),
   sep = "\t",
   quote = FALSE,
@@ -681,32 +628,10 @@ write.table(
 )
 
 write.table(
-  removed_columns,
+  grossbach_prt_strain_loss,
   file = paste0(
     review_asys,
-    "phenotype_missingness_removed_columns.tsv"
-  ),
-  sep = "\t",
-  quote = FALSE,
-  row.names = FALSE
-)
-
-write.table(
-  threshold_checks,
-  file = paste0(
-    review_asys,
-    "phenotype_missingness_threshold_checks.tsv"
-  ),
-  sep = "\t",
-  quote = FALSE,
-  row.names = FALSE
-)
-
-write.table(
-  grossbach_prt_strain_summary,
-  file = paste0(
-    review_asys,
-    "GrossbachPRT_missingness_strain_summary.tsv"
+    "GrossbachPRT_strain_loss.tsv"
   ),
   sep = "\t",
   quote = FALSE,
@@ -725,17 +650,15 @@ write.table(
 )
 
 message("")
-message("Phenotype missingness audit complete.")
+message("Missingness audit complete.")
 message("")
+message("Direct effects of the 25% missingness filter:")
 print(missingness_summary)
 message("")
-message("Datasets without an explicit rmIterNA call:")
-print(threshold_checks)
+message("Grossbach protein strain-level loss:")
+print(grossbach_prt_strain_loss)
 message("")
-message("Grossbach protein strain-level consequence:")
-print(grossbach_prt_strain_summary)
-message("")
-message("Final mapping dimensions:")
+message("Final mapping dimensions after all preprocessing/harmonization:")
 print(mapping_dimensions)
 message("")
 message("Outputs written to: ", review_asys)
