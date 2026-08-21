@@ -56,9 +56,6 @@ if (
 
 required_qtl_columns = c(
   "gene",
-  "marker",
-  "mRNA_effect",
-  "protein_effect",
   "bin"
 )
 
@@ -258,39 +255,6 @@ run_one_go = function(
   )
 }
 
-normalize_chr = function(x) {
-
-  x = toupper(trimws(as.character(x)))
-  x = sub("^CHR", "", x)
-
-  roman = c(
-    "I", "II", "III", "IV",
-    "V", "VI", "VII", "VIII",
-    "IX", "X", "XI", "XII",
-    "XIII", "XIV", "XV", "XVI"
-  )
-
-  out = suppressWarnings(as.integer(x))
-  use_roman = is.na(out) & x %in% roman
-  out[use_roman] = match(x[use_roman], roman)
-  out
-}
-
-parse_marker = function(x) {
-
-  x = as.character(x)
-
-  chr = sub(":.*$", "", x)
-  position = sub("^[^:]+:", "", x)
-  position = sub("_.*$", "", position)
-
-  data.frame(
-    chr = normalize_chr(chr),
-    position = suppressWarnings(as.numeric(position)),
-    stringsAsFactors = FALSE
-  )
-}
-
 #####################
 # RUN GO ENRICHMENT #
 #####################
@@ -342,16 +306,29 @@ key_go = all_go_results %>%
     GO.ID %in% key_terms
   ) %>%
   mutate(
-    term_order = match(GO.ID, key_terms)
+    term_order = match(GO.ID, key_terms),
+    `GO term` = Term,
+    Ontology = ontology,
+    `Discordant genes` = paste0(Significant, "/37"),
+    Expected = sprintf("%.2f", Expected),
+    `Fold enrichment` = sprintf("%.2f", fold_enrichment),
+    FDR = formatC(fisher_q, format = "e", digits = 2)
   ) %>%
   arrange(term_order) %>%
-  dplyr::select(-term_order)
+  dplyr::select(
+    `GO term`,
+    Ontology,
+    `Discordant genes`,
+    Expected,
+    `Fold enrichment`,
+    FDR
+  )
 
 if (
   nrow(key_go) != 4L ||
   !identical(
-    key_go$Significant,
-    c(25, 15, 21, 20)
+    key_go$`Discordant genes`,
+    c("25/37", "15/37", "21/37", "20/37")
   )
 ) {
   stop("Unexpected counts for reviewer-focused GO terms.")
@@ -395,11 +372,6 @@ other_interaction_genes = setdiff(
   discordant_genes
 )
 
-ribosome_term_members = vector(
-  "list",
-  nrow(ribosome_focus_terms)
-)
-
 ribosome_contrast_rows = lapply(
   seq_len(nrow(ribosome_focus_terms)),
   function(i) {
@@ -415,8 +387,6 @@ ribosome_contrast_rows = lapply(
       go_objects[[result_name]],
       whichGO = this_term$GO.ID
     )[[this_term$GO.ID]]
-
-    ribosome_term_members[[i]] <<- term_members
 
     discordant_members = sort(
       intersect(discordant_genes, term_members)
@@ -443,17 +413,12 @@ ribosome_contrast_rows = lapply(
     )
 
     data.frame(
-      ontology = this_term$ontology,
       GO.ID = this_term$GO.ID,
-      Term = this_term$Term,
-      n_discordant = length(discordant_genes),
-      n_discordant_member = length(discordant_members),
-      n_other_interaction = length(other_interaction_genes),
-      n_other_interaction_member = length(other_members),
+      GO_term = this_term$Term,
+      discordant = paste0(length(discordant_members), "/37"),
+      other_interactions = paste0(length(other_members), "/27"),
       odds_ratio = unname(fisher_result$estimate),
       fisher_p = fisher_result$p.value,
-      discordant_genes = paste(discordant_members, collapse = ";"),
-      other_interaction_genes = paste(other_members, collapse = ";"),
       stringsAsFactors = FALSE
     )
   }
@@ -476,113 +441,10 @@ ribosomal_subunit_row = ribosome_contrast[
 ]
 
 if (
-  ribosomal_subunit_row$n_discordant_member != 21L ||
-  ribosomal_subunit_row$n_other_interaction_member != 1L
+  ribosomal_subunit_row$discordant != "21/37" ||
+  ribosomal_subunit_row$other_interactions != "1/27"
 ) {
   stop("Unexpected ribosomal-subunit class contrast.")
-}
-
-ribosome_related_genes = intersect(
-  gene_sets$all_interaction,
-  unique(unlist(ribosome_term_members))
-)
-
-########################
-# MKT1 / BUL2 SUMMARY  #
-########################
-
-# These are the 100-kb hotspot bins used for the interaction-QTL
-# hotspot summaries in the manuscript.
-
-peak = parse_marker(
-  qtls_aug_analyte_ixn$marker
-)
-
-if (
-  any(!is.finite(peak$chr)) ||
-  any(!is.finite(peak$position))
-) {
-  stop("Could not parse at least one interaction-QTL peak marker.")
-}
-
-hotspot = rep(
-  NA_character_,
-  nrow(qtls_aug_analyte_ixn)
-)
-
-hotspot[
-  peak$chr == 14 &
-  peak$position >= 400000 &
-  peak$position < 500000
-] = "MKT1"
-
-hotspot[
-  peak$chr == 13 &
-  peak$position >= 0 &
-  peak$position < 100000
-] = "BUL2"
-
-summarize_hotspot = function(hotspot_name) {
-
-  x = qtls_aug_analyte_ixn[
-    hotspot == hotspot_name,
-    ,
-    drop = FALSE
-  ]
-
-  discordant = x$bin == "line cross"
-
-  data.frame(
-    hotspot = hotspot_name,
-    n_strict_interaction = nrow(x),
-    n_discordant = sum(discordant),
-    n_mRNA_specific = sum(x$bin == "mRNA specific"),
-    n_protein_specific = sum(x$bin == "protein specific"),
-    n_same_direction = sum(x$bin == "same direction"),
-    n_discordant_ribosome_related = sum(
-      discordant &
-      x$gene %in% ribosome_related_genes
-    ),
-    n_discordant_RM_RNA_down_protein_up = sum(
-      discordant &
-      x$mRNA_effect < 0 &
-      x$protein_effect > 0
-    ),
-    stringsAsFactors = FALSE
-  )
-}
-
-hotspot_summary = rbind(
-  summarize_hotspot("MKT1"),
-  summarize_hotspot("BUL2")
-)
-
-mkt1 = hotspot_summary[
-  hotspot_summary$hotspot == "MKT1",
-  ,
-  drop = FALSE
-]
-
-bul2 = hotspot_summary[
-  hotspot_summary$hotspot == "BUL2",
-  ,
-  drop = FALSE
-]
-
-if (
-  mkt1$n_strict_interaction != 36L ||
-  mkt1$n_discordant != 26L ||
-  mkt1$n_discordant_ribosome_related != 21L ||
-  mkt1$n_discordant_RM_RNA_down_protein_up != 26L
-) {
-  stop("Unexpected MKT1 interaction summary.")
-}
-
-if (
-  bul2$n_strict_interaction != 11L ||
-  bul2$n_protein_specific != 9L
-) {
-  stop("Unexpected BUL2 interaction summary.")
 }
 
 ################
@@ -593,7 +455,7 @@ write.table(
   significant_go,
   file = paste0(
     go_asys,
-    "analyte_interaction_GO_report.tsv"
+    "GO_significant_terms.tsv"
   ),
   sep = "\t",
   quote = FALSE,
@@ -604,7 +466,7 @@ write.table(
   key_go,
   file = paste0(
     go_asys,
-    "analyte_interaction_GO_key.tsv"
+    "GO_key_terms.tsv"
   ),
   sep = "\t",
   quote = FALSE,
@@ -615,18 +477,7 @@ write.table(
   ribosome_contrast,
   file = paste0(
     go_asys,
-    "analyte_interaction_ribosome_class_contrast.tsv"
-  ),
-  sep = "\t",
-  quote = FALSE,
-  row.names = FALSE
-)
-
-write.table(
-  hotspot_summary,
-  file = paste0(
-    go_asys,
-    "analyte_interaction_hotspot_summary.tsv"
+    "GO_discordant_vs_other_interactions.tsv"
   ),
   sep = "\t",
   quote = FALSE,
@@ -635,10 +486,7 @@ write.table(
 
 message("")
 message("GO review analysis complete.")
-message("Production tables written to: ", go_asys)
+message("Output directory: ", go_asys)
 message("")
-message("Reviewer-focused GO terms:")
-print(key_go)
-message("")
-message("Hotspot summary:")
-print(hotspot_summary)
+message("Reviewer-focused GO table:")
+print(key_go, row.names = FALSE)
