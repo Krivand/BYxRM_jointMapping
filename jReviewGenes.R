@@ -135,20 +135,8 @@ continuous_row = function(feature, label) {
 
   data.frame(
     Characteristic = label,
-    `385 jointly analyzed genes` = sprintf(
-      "%.2f [%.2f, %.2f] (n=%d)",
-      median(x),
-      unname(quantile(x, 0.25)),
-      unname(quantile(x, 0.75)),
-      length(x)
-    ),
-    `Other expressed genes` = sprintf(
-      "%.2f [%.2f, %.2f] (n=%d)",
-      median(y),
-      unname(quantile(y, 0.25)),
-      unname(quantile(y, 0.75)),
-      length(y)
-    ),
+    `Supported genes` = sprintf("%.2f", median(x)),
+    `Other genes` = sprintf("%.2f", median(y)),
     `Effect size` = sprintf("r = %.2f", rank_biserial),
     P = format_p(test$p.value),
     check.names = FALSE,
@@ -179,23 +167,19 @@ binary_row = function(feature, label) {
 
   data.frame(
     Characteristic = label,
-    `385 jointly analyzed genes` = sprintf(
-      "%d/%d (%.1f%%)",
+    `Supported genes` = sprintf(
+      "%d/%d",
       sum(x),
-      length(x),
-      100 * mean(x)
+      length(x)
     ),
-    `Other expressed genes` = sprintf(
-      "%d/%d (%.1f%%)",
+    `Other genes` = sprintf(
+      "%d/%d",
       sum(y),
-      length(y),
-      100 * mean(y)
+      length(y)
     ),
     `Effect size` = sprintf(
-      "OR %.2f [%.2f, %.2f]",
-      unname(test$estimate),
-      unname(test$conf.int[1]),
-      unname(test$conf.int[2])
+      "OR %.2f",
+      unname(test$estimate)
     ),
     P = format_p(test$p.value),
     check.names = FALSE,
@@ -210,7 +194,7 @@ binary_row = function(feature, label) {
 review_table = rbind(
   continuous_row(
     "expression",
-    "Mean expression (log2 TPM)"
+    "Mean log2 TPM"
   ),
   binary_row(
     "essential",
@@ -222,7 +206,7 @@ review_table = rbind(
   ),
   continuous_row(
     "PPI",
-    "Protein-protein interaction partners"
+    "PPI partners"
   )
 )
 
