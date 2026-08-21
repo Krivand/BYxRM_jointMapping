@@ -105,15 +105,22 @@ feature_labels = c(
   dNdS = "dN/dS"
 )
 
-count_features = c(
+# Keep the main-text table compact by retaining one representative
+# genetic-interaction measure and one dN/dS measure. All features above
+# are still tested individually and retained in the full output.
+main_features = c(
+  "expression",
+  "essential",
+  "hasHumanHomolog",
+  "hasParalog",
+  "isTF",
   "PPI",
-  "GxGLenient",
-  "GxGIntermediate",
-  "GxGStrict"
+  "GxGStrict",
+  "dNdS_adjust"
 )
 
 ########################
-# UNADJUSTED TESTS      #
+# INDIVIDUAL TESTS      #
 ########################
 
 test_continuous = function(feature) {
@@ -155,6 +162,8 @@ test_continuous = function(feature) {
   data.frame(
     feature = feature,
     feature_type = "continuous",
+    test = "Wilcoxon rank-sum",
+    effect_metric = "Rank-biserial r",
     n_supported = length(x),
     n_background = length(y),
     supported_n_true = NA_integer_,
@@ -187,7 +196,6 @@ test_continuous = function(feature) {
         0.75
       )
     ),
-    effect_metric = "rank_biserial",
     effect_estimate = rank_biserial,
     effect_low = NA_real_,
     effect_high = NA_real_,
@@ -227,6 +235,8 @@ test_binary = function(feature) {
   data.frame(
     feature = feature,
     feature_type = "binary",
+    test = "Fisher exact",
+    effect_metric = "Odds ratio",
     n_supported = length(x),
     n_background = length(y),
     supported_n_true = sum(x),
@@ -239,7 +249,6 @@ test_binary = function(feature) {
     background_median = NA_real_,
     background_q25 = NA_real_,
     background_q75 = NA_real_,
-    effect_metric = "odds_ratio",
     effect_estimate = unname(
       test$estimate
     ),
@@ -254,7 +263,7 @@ test_binary = function(feature) {
   )
 }
 
-unadjusted = rbind(
+individual_tests = rbind(
   do.call(
     rbind,
     lapply(
@@ -271,656 +280,168 @@ unadjusted = rbind(
   )
 )
 
-unadjusted$q_value = p.adjust(
-  unadjusted$p_value,
+individual_tests$q_value = p.adjust(
+  individual_tests$p_value,
   method = "BH"
 )
 
-unadjusted$feature_label =
+individual_tests$feature_label =
   unname(
     feature_labels[
-      unadjusted$feature
+      individual_tests$feature
     ]
   )
 
-unadjusted$order =
+individual_tests$order =
   match(
-    unadjusted$feature,
+    individual_tests$feature,
     feature_order
   )
 
-unadjusted =
-  unadjusted[
+individual_tests =
+  individual_tests[
     order(
-      unadjusted$order
+      individual_tests$order
     ),
     ,
     drop = FALSE
   ]
 
-unadjusted$order = NULL
+individual_tests$order = NULL
 
 ########################
-# EXPRESSION ADJUSTMENT #
+# REVIEW-READY TABLE    #
 ########################
 
-adjusted_models = list()
-adjusted_rows = list()
-
-adjustment_features = setdiff(
-  feature_order,
-  "expression"
-)
-
-for (feature in adjustment_features) {
-
-  dat = universe[
-    ,
-    c(
-      "in_supported_analyte",
-      "expression",
-      feature
+format_p = function(x) {
+  ifelse(
+    x < 0.001,
+    formatC(
+      x,
+      format = "e",
+      digits = 2
     ),
-    drop = FALSE
-  ]
-
-  names(dat)[3] =
-    "raw_feature"
-
-  dat = dat[
-    complete.cases(dat),
-    ,
-    drop = FALSE
-  ]
-
-  if (feature %in% binary_features) {
-
-    dat$feature_value =
-      as.integer(
-        dat$raw_feature
-      )
-
-    feature_scale =
-      "TRUE vs FALSE"
-
-  } else {
-
-    transformed =
-      dat$raw_feature
-
-    if (feature %in% count_features) {
-      transformed =
-        log1p(
-          transformed
-        )
-    }
-
-    dat$feature_value =
-      as.numeric(
-        scale(
-          transformed
-        )
-      )
-
-    if (feature %in% count_features) {
-      feature_scale =
-        "per SD of log1p(feature)"
-    } else {
-      feature_scale =
-        "per SD of feature"
-    }
-  }
-
-  fit = glm(
-    in_supported_analyte ~
-      splines::ns(
-        expression,
-        df = 4
-      ) +
-      feature_value,
-    data = dat,
-    family = binomial()
-  )
-
-  coefficient_table =
-    summary(fit)$coefficients
-
-  beta =
-    coefficient_table[
-      "feature_value",
-      "Estimate"
-    ]
-
-  se =
-    coefficient_table[
-      "feature_value",
-      "Std. Error"
-    ]
-
-  p_value =
-    coefficient_table[
-      "feature_value",
-      "Pr(>|z|)"
-    ]
-
-  adjusted_models[[feature]] =
-    fit
-
-  adjusted_rows[[feature]] =
-    data.frame(
-      feature = feature,
-      feature_label = unname(
-        feature_labels[
-          feature
-        ]
-      ),
-      feature_type = ifelse(
-        feature %in% binary_features,
-        "binary",
-        "continuous"
-      ),
-      feature_scale = feature_scale,
-      n_model = nrow(dat),
-      n_supported = sum(
-        dat$in_supported_analyte
-      ),
-      n_background = sum(
-        !dat$in_supported_analyte
-      ),
-      log_odds_estimate = beta,
-      standard_error = se,
-      odds_ratio = exp(beta),
-      odds_ratio_low = exp(
-        beta -
-        1.96 *
-        se
-      ),
-      odds_ratio_high = exp(
-        beta +
-        1.96 *
-        se
-      ),
-      p_value = p_value,
-      stringsAsFactors = FALSE
+    sprintf(
+      "%.3f",
+      x
     )
+  )
 }
 
-expression_adjusted = do.call(
-  rbind,
-  adjusted_rows
-)
+main_table =
+  individual_tests[
+    individual_tests$feature %in%
+    main_features,
+    ,
+    drop = FALSE
+  ]
 
-rownames(expression_adjusted) =
-  NULL
-
-expression_adjusted$q_value =
-  p.adjust(
-    expression_adjusted$p_value,
-    method = "BH"
-  )
-
-expression_adjusted$order =
+main_table$order =
   match(
-    expression_adjusted$feature,
-    feature_order
+    main_table$feature,
+    main_features
   )
 
-expression_adjusted =
-  expression_adjusted[
+main_table =
+  main_table[
     order(
-      expression_adjusted$order
+      main_table$order
     ),
     ,
     drop = FALSE
   ]
 
-expression_adjusted$order =
-  NULL
-
-########################
-# CORE MULTIVARIABLE    #
-########################
-
-core_features = c(
-  "essential",
-  "hasHumanHomolog",
-  "hasParalog",
-  "isTF"
+main_table$supported_genes = ifelse(
+  main_table$feature_type == "binary",
+  sprintf(
+    "%d/%d (%.1f%%)",
+    main_table$supported_n_true,
+    main_table$n_supported,
+    100 * main_table$supported_prop
+  ),
+  sprintf(
+    "%.3f [%.3f, %.3f] (n=%d)",
+    main_table$supported_median,
+    main_table$supported_q25,
+    main_table$supported_q75,
+    main_table$n_supported
+  )
 )
 
-core_dat =
-  universe[
+main_table$other_genes = ifelse(
+  main_table$feature_type == "binary",
+  sprintf(
+    "%d/%d (%.1f%%)",
+    main_table$background_n_true,
+    main_table$n_background,
+    100 * main_table$background_prop
+  ),
+  sprintf(
+    "%.3f [%.3f, %.3f] (n=%d)",
+    main_table$background_median,
+    main_table$background_q25,
+    main_table$background_q75,
+    main_table$n_background
+  )
+)
+
+main_table$effect = ifelse(
+  main_table$feature_type == "binary",
+  sprintf(
+    "OR %.2f [%.2f, %.2f]",
+    main_table$effect_estimate,
+    main_table$effect_low,
+    main_table$effect_high
+  ),
+  sprintf(
+    "r = %.3f",
+    main_table$effect_estimate
+  )
+)
+
+main_table$p =
+  format_p(
+    main_table$p_value
+  )
+
+main_table$BH_FDR =
+  format_p(
+    main_table$q_value
+  )
+
+main_table =
+  main_table[
     ,
     c(
-      "in_supported_analyte",
-      "expression",
-      core_features
-    ),
-    drop = FALSE
-  ]
-
-for (feature in core_features) {
-
-  core_dat[[feature]] =
-    as.integer(
-      core_dat[[feature]]
-    )
-}
-
-core_fit = glm(
-  in_supported_analyte ~
-    splines::ns(
-      expression,
-      df = 4
-    ) +
-    essential +
-    hasHumanHomolog +
-    hasParalog +
-    isTF,
-  data = core_dat,
-  family = binomial()
-)
-
-core_coefficients =
-  summary(core_fit)$coefficients
-
-core_rows = lapply(
-  core_features,
-  function(feature) {
-
-    beta =
-      core_coefficients[
-        feature,
-        "Estimate"
-      ]
-
-    se =
-      core_coefficients[
-        feature,
-        "Std. Error"
-      ]
-
-    data.frame(
-      feature = feature,
-      feature_label = unname(
-        feature_labels[
-          feature
-        ]
-      ),
-      n_model = nrow(core_dat),
-      odds_ratio = exp(beta),
-      odds_ratio_low = exp(
-        beta -
-        1.96 *
-        se
-      ),
-      odds_ratio_high = exp(
-        beta +
-        1.96 *
-        se
-      ),
-      p_value = core_coefficients[
-        feature,
-        "Pr(>|z|)"
-      ],
-      stringsAsFactors = FALSE
-    )
-  }
-)
-
-core_model_table =
-  do.call(
-    rbind,
-    core_rows
-  )
-
-core_model_table$q_value =
-  p.adjust(
-    core_model_table$p_value,
-    method = "BH"
-  )
-
-########################
-# EXPRESSION SUMMARY    #
-########################
-
-expression_row =
-  unadjusted[
-    unadjusted$feature ==
-    "expression",
-    ,
-    drop = FALSE
-  ]
-
-expression_summary = data.frame(
-  n_expression_universe = nrow(universe),
-  n_supported = nrow(supported),
-  n_background = nrow(background),
-  universe_expression_median =
-    median(
-      universe$expression
-    ),
-  supported_expression_median =
-    median(
-      supported$expression
-    ),
-  background_expression_median =
-    median(
-      background$expression
-    ),
-  supported_median_percentile =
-    median(
-      supported$expression_percentile
-    ),
-  supported_fraction_above_50th =
-    mean(
-      supported$expression_percentile >
-      0.50
-    ),
-  supported_fraction_above_75th =
-    mean(
-      supported$expression_percentile >
-      0.75
-    ),
-  supported_fraction_above_90th =
-    mean(
-      supported$expression_percentile >
-      0.90
-    ),
-  expression_rank_biserial =
-    expression_row$effect_estimate,
-  expression_wilcoxon_p =
-    expression_row$p_value,
-  stringsAsFactors = FALSE
-)
-
-########################
-# EXPRESSION DECILES    #
-########################
-
-expression_deciles = do.call(
-  rbind,
-  lapply(
-    1:10,
-    function(decile) {
-
-      this_decile =
-        universe[
-          universe$expression_decile ==
-          decile,
-          ,
-          drop = FALSE
-        ]
-
-      data.frame(
-        expression_decile = decile,
-        n_universe = nrow(
-          this_decile
-        ),
-        n_supported = sum(
-          this_decile$in_supported_analyte
-        ),
-        n_background = sum(
-          !this_decile$in_supported_analyte
-        ),
-        fraction_of_decile_supported =
-          mean(
-            this_decile$in_supported_analyte
-          ),
-        fraction_of_supported_genes =
-          sum(
-            this_decile$in_supported_analyte
-          ) /
-          nrow(supported),
-        stringsAsFactors = FALSE
-      )
-    }
-  )
-)
-
-##############################
-# EXPRESSION-STANDARDIZED    #
-# BINARY CHARACTERISTICS     #
-##############################
-
-binary_standardized_rows = list()
-
-for (feature in binary_features) {
-
-  supported_complete =
-    supported[
-      !is.na(
-        supported[[feature]]
-      ),
-      ,
-      drop = FALSE
-    ]
-
-  decile_rows = lapply(
-    1:10,
-    function(decile) {
-
-      s =
-        supported_complete[
-          supported_complete$expression_decile ==
-          decile,
-          ,
-          drop = FALSE
-        ]
-
-      b =
-        background[
-          background$expression_decile ==
-          decile &
-          !is.na(
-            background[[feature]]
-          ),
-          ,
-          drop = FALSE
-        ]
-
-      data.frame(
-        expression_decile = decile,
-        n_supported = nrow(s),
-        n_background = nrow(b),
-        background_rate = ifelse(
-          nrow(b) > 0L,
-          mean(
-            b[[feature]]
-          ),
-          NA_real_
-        ),
-        stringsAsFactors = FALSE
-      )
-    }
-  )
-
-  decile_table =
-    do.call(
-      rbind,
-      decile_rows
-    )
-
-  if (
-    any(
-      decile_table$n_supported > 0L &
-      is.na(
-        decile_table$background_rate
-      )
-    )
-  ) {
-    standardized_rate =
-      NA_real_
-  } else {
-    standardized_rate =
-      sum(
-        decile_table$n_supported *
-        decile_table$background_rate,
-        na.rm = TRUE
-      ) /
-      sum(
-        decile_table$n_supported
-      )
-  }
-
-  observed_rate =
-    mean(
-      supported_complete[[feature]]
-    )
-
-  binary_standardized_rows[[feature]] =
-    data.frame(
-      feature = feature,
-      feature_label = unname(
-        feature_labels[
-          feature
-        ]
-      ),
-      n_supported = nrow(
-        supported_complete
-      ),
-      observed_supported_rate =
-        observed_rate,
-      expected_rate_given_expression =
-        standardized_rate,
-      observed_minus_expected =
-        observed_rate -
-        standardized_rate,
-      observed_over_expected =
-        observed_rate /
-        standardized_rate,
-      stringsAsFactors = FALSE
-    )
-}
-
-binary_expression_standardized =
-  do.call(
-    rbind,
-    binary_standardized_rows
-  )
-
-rownames(
-  binary_expression_standardized
-) = NULL
-
-########################
-# REVIEWER SUMMARY      #
-########################
-
-reviewer_summary =
-  unadjusted
-
-reviewer_summary$supported_summary =
-  ifelse(
-    reviewer_summary$feature_type ==
-    "binary",
-    sprintf(
-      "%d/%d (%.1f%%)",
-      reviewer_summary$supported_n_true,
-      reviewer_summary$n_supported,
-      100 *
-      reviewer_summary$supported_prop
-    ),
-    sprintf(
-      "%.3f [%.3f, %.3f]",
-      reviewer_summary$supported_median,
-      reviewer_summary$supported_q25,
-      reviewer_summary$supported_q75
-    )
-  )
-
-reviewer_summary$background_summary =
-  ifelse(
-    reviewer_summary$feature_type ==
-    "binary",
-    sprintf(
-      "%d/%d (%.1f%%)",
-      reviewer_summary$background_n_true,
-      reviewer_summary$n_background,
-      100 *
-      reviewer_summary$background_prop
-    ),
-    sprintf(
-      "%.3f [%.3f, %.3f]",
-      reviewer_summary$background_median,
-      reviewer_summary$background_q25,
-      reviewer_summary$background_q75
-    )
-  )
-
-adjusted_index = match(
-  reviewer_summary$feature,
-  expression_adjusted$feature
-)
-
-reviewer_summary$expression_adjusted_n_model =
-  expression_adjusted$n_model[
-    adjusted_index
-  ]
-
-reviewer_summary$expression_adjusted_scale =
-  expression_adjusted$feature_scale[
-    adjusted_index
-  ]
-
-reviewer_summary$expression_adjusted_or =
-  expression_adjusted$odds_ratio[
-    adjusted_index
-  ]
-
-reviewer_summary$expression_adjusted_or_low =
-  expression_adjusted$odds_ratio_low[
-    adjusted_index
-  ]
-
-reviewer_summary$expression_adjusted_or_high =
-  expression_adjusted$odds_ratio_high[
-    adjusted_index
-  ]
-
-reviewer_summary$expression_adjusted_p =
-  expression_adjusted$p_value[
-    adjusted_index
-  ]
-
-reviewer_summary$expression_adjusted_q =
-  expression_adjusted$q_value[
-    adjusted_index
-  ]
-
-reviewer_summary =
-  reviewer_summary[
-    ,
-    c(
-      "feature",
       "feature_label",
-      "feature_type",
-      "n_supported",
-      "n_background",
-      "supported_summary",
-      "background_summary",
+      "supported_genes",
+      "other_genes",
+      "test",
       "effect_metric",
-      "effect_estimate",
-      "effect_low",
-      "effect_high",
-      "p_value",
-      "q_value",
-      "expression_adjusted_n_model",
-      "expression_adjusted_scale",
-      "expression_adjusted_or",
-      "expression_adjusted_or_low",
-      "expression_adjusted_or_high",
-      "expression_adjusted_p",
-      "expression_adjusted_q"
-    )
+      "effect",
+      "p",
+      "BH_FDR"
+    ),
+    drop = FALSE
   ]
+
+names(main_table) = c(
+  "Feature",
+  "Supported genes",
+  "Other genes",
+  "Test",
+  "Effect metric",
+  "Effect",
+  "P",
+  "BH FDR"
+)
 
 ########################
 # SAVE OUTPUTS          #
 ########################
 
 write.table(
-  reviewer_summary,
+  main_table,
   file = paste0(
     genes_asys,
     "reviewer2_gene_characteristics_summary.tsv"
@@ -931,7 +452,20 @@ write.table(
 )
 
 write.table(
-  unadjusted,
+  individual_tests,
+  file = paste0(
+    genes_asys,
+    "gene_characteristics_individual_tests.tsv"
+  ),
+  sep = "\t",
+  quote = FALSE,
+  row.names = FALSE
+)
+
+# Keep the legacy unadjusted filename synchronized for compatibility with
+# any downstream notes generated before this simplification.
+write.table(
+  individual_tests,
   file = paste0(
     genes_asys,
     "gene_characteristics_unadjusted.tsv"
@@ -941,74 +475,13 @@ write.table(
   row.names = FALSE
 )
 
-write.table(
-  expression_adjusted,
-  file = paste0(
-    genes_asys,
-    "gene_characteristics_expression_adjusted.tsv"
-  ),
-  sep = "\t",
-  quote = FALSE,
-  row.names = FALSE
-)
-
-write.table(
-  core_model_table,
-  file = paste0(
-    genes_asys,
-    "gene_characteristics_core_model.tsv"
-  ),
-  sep = "\t",
-  quote = FALSE,
-  row.names = FALSE
-)
-
-write.table(
-  binary_expression_standardized,
-  file = paste0(
-    genes_asys,
-    "gene_characteristics_binary_expression_standardized.tsv"
-  ),
-  sep = "\t",
-  quote = FALSE,
-  row.names = FALSE
-)
-
-write.table(
-  expression_summary,
-  file = paste0(
-    genes_asys,
-    "gene_characteristics_expression_summary.tsv"
-  ),
-  sep = "\t",
-  quote = FALSE,
-  row.names = FALSE
-)
-
-write.table(
-  expression_deciles,
-  file = paste0(
-    genes_asys,
-    "gene_characteristics_expression_deciles.tsv"
-  ),
-  sep = "\t",
-  quote = FALSE,
-  row.names = FALSE
-)
-
 results = list(
-  reviewer_summary = reviewer_summary,
-  unadjusted = unadjusted,
-  expression_adjusted = expression_adjusted,
-  core_model_table = core_model_table,
-  binary_expression_standardized =
-    binary_expression_standardized,
-  expression_summary = expression_summary,
-  expression_deciles = expression_deciles,
+  main_table = main_table,
+  individual_tests = individual_tests,
   feature_coverage =
     review_ab2018$feature_coverage,
-  adjusted_models = adjusted_models,
-  core_model = core_fit
+  source_summary =
+    review_ab2018$source_summary
 )
 
 saveRDS(
@@ -1027,39 +500,28 @@ readme = data.frame(
   item = c(
     "Primary universe",
     "Supported gene set",
-    "Unadjusted continuous tests",
-    "Unadjusted binary tests",
-    "Expression adjustment",
-    "Count-feature adjustment",
-    "Multiple-testing correction"
+    "Continuous features",
+    "Binary features",
+    "Multiple-testing correction",
+    "Main-table selection"
   ),
   description = c(
     "5,720 genes with AB2018 expression measurements",
     "385 genes measured in at least two mRNA and two protein datasets",
     "Wilcoxon rank-sum; effect size is rank-biserial correlation",
-    "Fisher exact test; effect size is odds ratio",
-    "Logistic regression of supported membership with expression modeled using a natural spline with 4 df",
-    "PPI and GxG counts are log1p-transformed and standardized before adjusted logistic regression",
-    "Benjamini-Hochberg within each reported feature-test family"
+    "Fisher exact test; effect size is odds ratio with 95% confidence interval",
+    "Benjamini-Hochberg across all 11 individually tested gene characteristics",
+    "Main table removes redundant GxG thresholds and raw dN/dS; all 11 tests remain in the full output"
   ),
   stringsAsFactors = FALSE
 )
 
 workbook_tables = list(
   README = readme,
-  source_summary = review_ab2018$source_summary,
-  reviewer_summary = reviewer_summary,
-  expression_summary = expression_summary,
-  expression_deciles = expression_deciles,
-  unadjusted_tests = unadjusted,
-  expression_adjusted = expression_adjusted,
-  binary_standardized =
-    binary_expression_standardized,
-  core_model = core_model_table,
+  main_table = main_table,
+  all_individual_tests = individual_tests,
   feature_coverage =
-    review_ab2018$feature_coverage,
-  supported_genes = supported,
-  gene_level = universe
+    review_ab2018$feature_coverage
 )
 
 openxlsx::write.xlsx(
@@ -1074,11 +536,31 @@ openxlsx::write.xlsx(
 
 message("")
 message("Reviewer 2 gene-characteristic analysis complete.")
+message("Only individual feature tests were run.")
 message(
   "Output directory: ",
   genes_asys
 )
 message("")
+message("Main review-ready table:")
 print(
-  reviewer_summary
+  main_table,
+  row.names = FALSE
+)
+message("")
+message("All individual tests:")
+print(
+  individual_tests[
+    ,
+    c(
+      "feature_label",
+      "feature_type",
+      "test",
+      "effect_metric",
+      "effect_estimate",
+      "p_value",
+      "q_value"
+    )
+  ],
+  row.names = FALSE
 )
