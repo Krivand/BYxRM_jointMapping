@@ -216,7 +216,7 @@ review_table = rbind(
 
 output_file = paste0(
   genes_asys,
-  "reviewer2_gene_characteristics_summary.tsv"
+  "supported_gene_characteristics_summary.tsv"
 )
 
 write.table(
@@ -228,7 +228,7 @@ write.table(
 )
 
 message("")
-message("Reviewer gene representativeness analysis complete.")
+message("Supported-gene representativeness analysis complete.")
 message("Output: ", output_file)
 message("")
 print(review_table, row.names = FALSE)
