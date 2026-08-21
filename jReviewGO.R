@@ -9,10 +9,8 @@
 # PRELIMINARIES #
 #################
 
-# source functions and constants
 source("/PHShome/kv1026/p05/remap_functions.R")
 
-# packages specific to reviewer analyses
 review_pkgs = c(
   "AnnotationDbi",
   "org.Sc.sgd.db",
@@ -20,43 +18,14 @@ review_pkgs = c(
 )
 
 for (pkg in review_pkgs) {
-
-  if (!requireNamespace(pkg, quietly = TRUE)) {
-
-    message("Installing ", pkg, "...")
-
-    suppressMessages(
-      BiocManager::install(
-        pkg,
-        lib = personal_lib_path,
-        ask = FALSE,
-        update = FALSE,
-        quiet = TRUE
-      )
-    )
-  }
-
   if (!require(pkg, character.only = TRUE, quietly = TRUE)) {
-    stop("Package ", pkg, " could not be loaded.")
+    stop("Package ", pkg, " is required.")
   }
 }
 
 rm(review_pkgs)
 
-#################
-# OUTPUT SETUP  #
-#################
-
-review_imed = paste0(imed, "review/")
-review_asys = paste0(asys, "review/")
-
-ensure_directory(review_imed)
-ensure_directory(review_asys)
-
-go_imed = paste0(review_imed, "go/")
-go_asys = paste0(review_asys, "go/")
-
-ensure_directory(go_imed)
+go_asys = paste0(asys, "review/go/")
 ensure_directory(go_asys)
 
 ########################
@@ -71,46 +40,38 @@ load(
   paste0(imed, "qtls_aug_analyte_ixn.rda")
 )
 
-#################
-# INPUT CHECKS  #
-#################
+if (
+  length(supported_analyte) != 385L ||
+  anyDuplicated(supported_analyte)
+) {
+  stop("Expected 385 unique supported analyte genes.")
+}
 
-if (length(supported_analyte) != 385L) {
+if (
+  nrow(qtls_aug_analyte_ixn) != 64L ||
+  anyDuplicated(qtls_aug_analyte_ixn$gene)
+) {
+  stop("Expected 64 strict interaction QTLs, one per gene.")
+}
+
+required_qtl_columns = c(
+  "gene",
+  "marker",
+  "mRNA_effect",
+  "protein_effect",
+  "bin"
+)
+
+missing_qtl_columns = setdiff(
+  required_qtl_columns,
+  names(qtls_aug_analyte_ixn)
+)
+
+if (length(missing_qtl_columns) > 0L) {
   stop(
-    "Expected 385 supported analyte genes, found ",
-    length(supported_analyte),
-    "."
+    "Interaction QTL table is missing columns: ",
+    paste(missing_qtl_columns, collapse = ", ")
   )
-}
-
-if (anyDuplicated(supported_analyte)) {
-  stop("supported_analyte contains duplicated genes.")
-}
-
-if (nrow(qtls_aug_analyte_ixn) != 64L) {
-  stop(
-    "Expected 64 analyte interaction QTLs, found ",
-    nrow(qtls_aug_analyte_ixn),
-    "."
-  )
-}
-
-ixn_genes = unique(qtls_aug_analyte_ixn$gene)
-
-if (!all(ixn_genes %in% supported_analyte)) {
-  stop(
-    "Some analyte interaction genes are outside ",
-    "the supported analyte universe."
-  )
-}
-
-gene_bin_check =
-  qtls_aug_analyte_ixn %>%
-  distinct(gene, bin) %>%
-  count(gene, name = "n_bins")
-
-if (any(gene_bin_check$n_bins != 1L)) {
-  stop("At least one interaction gene belongs to multiple bins.")
 }
 
 ###################
@@ -119,35 +80,27 @@ if (any(gene_bin_check$n_bins != 1L)) {
 
 gene_sets = list(
   all_interaction = sort(
-    unique(qtls_aug_analyte_ixn$gene)
+    qtls_aug_analyte_ixn$gene
   ),
   discordant = sort(
-    unique(
-      qtls_aug_analyte_ixn$gene[
-        qtls_aug_analyte_ixn$bin == "line cross"
-      ]
-    )
+    qtls_aug_analyte_ixn$gene[
+      qtls_aug_analyte_ixn$bin == "line cross"
+    ]
   ),
   protein_specific = sort(
-    unique(
-      qtls_aug_analyte_ixn$gene[
-        qtls_aug_analyte_ixn$bin == "protein specific"
-      ]
-    )
+    qtls_aug_analyte_ixn$gene[
+      qtls_aug_analyte_ixn$bin == "protein specific"
+    ]
   ),
   mRNA_specific = sort(
-    unique(
-      qtls_aug_analyte_ixn$gene[
-        qtls_aug_analyte_ixn$bin == "mRNA specific"
-      ]
-    )
+    qtls_aug_analyte_ixn$gene[
+      qtls_aug_analyte_ixn$bin == "mRNA specific"
+    ]
   ),
   same_direction = sort(
-    unique(
-      qtls_aug_analyte_ixn$gene[
-        qtls_aug_analyte_ixn$bin == "same direction"
-      ]
-    )
+    qtls_aug_analyte_ixn$gene[
+      qtls_aug_analyte_ixn$bin == "same direction"
+    ]
   )
 )
 
@@ -166,36 +119,19 @@ observed_sizes = vapply(
 )
 
 if (!identical(observed_sizes, expected_sizes)) {
-
-  stop(
-    "Unexpected review gene-set sizes:\n",
-    paste(
-      names(observed_sizes),
-      observed_sizes,
-      collapse = "\n"
-    )
-  )
+  stop("Unexpected interaction-class sizes.")
 }
-
-message("Review gene sets:")
-print(observed_sizes)
 
 ########################
 # BUILD SGD GO MAPPING #
 ########################
 
-message("Collecting SGD GO annotations...")
-
-go_annotation =
-  AnnotationDbi::select(
-    org.Sc.sgd.db::org.Sc.sgd.db,
-    keys = supported_analyte,
-    keytype = "ORF",
-    columns = c(
-      "GO",
-      "ONTOLOGY"
-    )
-  ) %>%
+go_annotation = AnnotationDbi::select(
+  org.Sc.sgd.db::org.Sc.sgd.db,
+  keys = supported_analyte,
+  keytype = "ORF",
+  columns = c("GO", "ONTOLOGY")
+) %>%
   as.data.frame() %>%
   filter(
     !is.na(ORF),
@@ -204,18 +140,10 @@ go_annotation =
     ORF %in% supported_analyte,
     ONTOLOGY %in% c("BP", "CC", "MF")
   ) %>%
-  distinct(
-    ORF,
-    GO,
-    ONTOLOGY
-  )
+  distinct(ORF, GO, ONTOLOGY)
 
-gene2GO =
-  go_annotation %>%
-  dplyr::select(
-    ORF,
-    GO
-  ) %>%
+gene2GO = go_annotation %>%
+  dplyr::select(ORF, GO) %>%
   distinct()
 
 gene2GO = split(
@@ -223,59 +151,31 @@ gene2GO = split(
   gene2GO$ORF
 )
 
-annotated_genes = intersect(
-  supported_analyte,
-  names(gene2GO)
-)
-
-message(
-  "GO annotated genes in 385-gene universe: ",
-  length(annotated_genes),
-  " / ",
-  length(supported_analyte)
-)
-
-saveRDS(
-  go_annotation,
-  paste0(go_imed, "sgd_go_annotation.rds")
-)
+if (length(intersect(supported_analyte, names(gene2GO))) != 385L) {
+  stop("Not all 385 supported genes have GO annotations.")
+}
 
 ####################
 # HELPER FUNCTIONS #
 ####################
 
 parse_topgo_p = function(x) {
-
   x = as.character(x)
   x = gsub("^<\\s*", "", x)
-
-  suppressWarnings(
-    as.numeric(x)
-  )
+  suppressWarnings(as.numeric(x))
 }
 
 run_one_go = function(
   interesting_genes,
   set_name,
-  ontology,
-  universe,
-  gene2GO,
-  node_size = 3L
+  ontology
 ) {
 
-  if (!all(interesting_genes %in% universe)) {
-    stop(
-      "Gene set ",
-      set_name,
-      " contains genes outside the universe."
-    )
-  }
-
   gene_score = as.integer(
-    universe %in% interesting_genes
+    supported_analyte %in% interesting_genes
   )
 
-  names(gene_score) = universe
+  names(gene_score) = supported_analyte
 
   go_data = new(
     "topGOdata",
@@ -284,7 +184,7 @@ run_one_go = function(
     geneSel = function(x) x == 1L,
     annot = annFUN.gene2GO,
     gene2GO = gene2GO,
-    nodeSize = node_size
+    nodeSize = 3L
   )
 
   go_test = runTest(
@@ -309,40 +209,31 @@ run_one_go = function(
   go_table$member_genes = vapply(
     go_table$GO.ID,
     function(this_go) {
-
-      members = intersect(
-        term_members[[this_go]],
-        interesting_genes
-      )
-
       paste(
-        sort(members),
+        sort(
+          intersect(
+            term_members[[this_go]],
+            interesting_genes
+          )
+        ),
         collapse = ";"
       )
     },
     character(1)
   )
 
-  go_table =
-    go_table %>%
+  go_table = go_table %>%
     mutate(
       gene_set = set_name,
       ontology = ontology,
       n_gene_set = length(interesting_genes),
-      n_universe = length(universe),
+      n_universe = length(supported_analyte),
       fisher_p = parse_topgo_p(classicFisher),
-      fisher_q = p.adjust(
-        fisher_p,
-        method = "BH"
-      ),
+      fisher_q = p.adjust(fisher_p, method = "BH"),
       Annotated = as.numeric(Annotated),
       Significant = as.numeric(Significant),
       Expected = as.numeric(Expected),
-      fold_enrichment = ifelse(
-        Expected > 0,
-        Significant / Expected,
-        NA_real_
-      )
+      fold_enrichment = Significant / Expected
     ) %>%
     dplyr::select(
       gene_set,
@@ -357,18 +248,46 @@ run_one_go = function(
       fold_enrichment,
       fisher_p,
       fisher_q,
-      member_genes,
-      classicFisher
+      member_genes
     ) %>%
-    arrange(
-      fisher_p,
-      GO.ID
-    )
+    arrange(fisher_p, GO.ID)
 
   list(
     data = go_data,
-    test = go_test,
     table = go_table
+  )
+}
+
+normalize_chr = function(x) {
+
+  x = toupper(trimws(as.character(x)))
+  x = sub("^CHR", "", x)
+
+  roman = c(
+    "I", "II", "III", "IV",
+    "V", "VI", "VII", "VIII",
+    "IX", "X", "XI", "XII",
+    "XIII", "XIV", "XV", "XVI"
+  )
+
+  out = suppressWarnings(as.integer(x))
+  use_roman = is.na(out) & x %in% roman
+  out[use_roman] = match(x[use_roman], roman)
+  out
+}
+
+parse_marker = function(x) {
+
+  x = as.character(x)
+
+  chr = sub(":.*$", "", x)
+  position = sub("^[^:]+:", "", x)
+  position = sub("_.*$", "", position)
+
+  data.frame(
+    chr = normalize_chr(chr),
+    position = suppressWarnings(as.numeric(position)),
+    stringsAsFactors = FALSE
   )
 }
 
@@ -376,38 +295,17 @@ run_one_go = function(
 # RUN GO ENRICHMENT #
 #####################
 
-ontologies = c(
-  "BP",
-  "CC",
-  "MF"
-)
-
-go_results = list()
+ontologies = c("BP", "CC", "MF")
+go_objects = list()
 go_tables = list()
 
 for (set_name in names(gene_sets)) {
-
-  interesting_genes = gene_sets[[set_name]]
-
-  message(
-    "Running GO enrichment for ",
-    set_name,
-    " [n = ",
-    length(interesting_genes),
-    "]"
-  )
-
   for (ontology in ontologies) {
 
-    message("  ", ontology)
-
     result = run_one_go(
-      interesting_genes = interesting_genes,
+      interesting_genes = gene_sets[[set_name]],
       set_name = set_name,
-      ontology = ontology,
-      universe = supported_analyte,
-      gene2GO = gene2GO,
-      node_size = 3L
+      ontology = ontology
     )
 
     result_name = paste(
@@ -416,67 +314,52 @@ for (set_name in names(gene_sets)) {
       sep = "_"
     )
 
-    go_results[[result_name]] = result
+    go_objects[[result_name]] = result$data
     go_tables[[result_name]] = result$table
   }
 }
 
-all_go_results =
-  bind_rows(go_tables) %>%
-  arrange(
-    gene_set,
-    ontology,
-    fisher_p,
-    GO.ID
-  )
+all_go_results = bind_rows(go_tables)
 
-#####################
-# SUMMARIZE RESULTS #
-#####################
+significant_go = all_go_results %>%
+  filter(fisher_q < 0.05) %>%
+  arrange(gene_set, ontology, fisher_q, fisher_p)
 
-go_summary =
-  all_go_results %>%
-  group_by(
-    gene_set,
-    ontology
-  ) %>%
-  summarise(
-    n_gene_set = first(n_gene_set),
-    n_terms_tested = n(),
-    min_fisher_p = min(
-      fisher_p,
-      na.rm = TRUE
-    ),
-    n_nominal_0.05 = sum(
-      fisher_p < 0.05,
-      na.rm = TRUE
-    ),
-    n_fdr_0.05 = sum(
-      fisher_q < 0.05,
-      na.rm = TRUE
-    ),
-    .groups = "drop"
-  )
+############################
+# REVIEWER-FOCUSED GO ROWS #
+############################
 
-go_report =
-  all_go_results %>%
+key_terms = c(
+  "GO:0006412",
+  "GO:0042254",
+  "GO:0044391",
+  "GO:0003735"
+)
+
+key_go = all_go_results %>%
   filter(
-    fisher_q < 0.05
+    gene_set == "discordant",
+    GO.ID %in% key_terms
   ) %>%
-  arrange(
-    gene_set,
-    ontology,
-    fisher_q,
-    fisher_p
+  mutate(
+    term_order = match(GO.ID, key_terms)
+  ) %>%
+  arrange(term_order) %>%
+  dplyr::select(-term_order)
+
+if (
+  nrow(key_go) != 4L ||
+  !identical(
+    key_go$Significant,
+    c(25, 15, 21, 20)
   )
+) {
+  stop("Unexpected counts for reviewer-focused GO terms.")
+}
 
 ##############################
 # RIBOSOME CLASS CONTRAST    #
 ##############################
-
-# Exploratory follow-up asking whether representative
-# ribosome/translation annotations are concentrated in
-# discordant genes among the 64 interaction genes.
 
 ribosome_focus_terms = data.frame(
   ontology = c(
@@ -506,217 +389,208 @@ ribosome_focus_terms = data.frame(
   stringsAsFactors = FALSE
 )
 
-discordant_genes =
-  gene_sets$discordant
-
-other_interaction_genes =
-  setdiff(
-    gene_sets$all_interaction,
-    discordant_genes
-  )
-
-ribosome_contrast_rows =
-  lapply(
-    seq_len(
-      nrow(
-        ribosome_focus_terms
-      )
-    ),
-    function(i) {
-
-      this_term =
-        ribosome_focus_terms[
-          i,
-          ,
-          drop = FALSE
-        ]
-
-      result_name =
-        paste(
-          "all_interaction",
-          this_term$ontology,
-          sep = "_"
-        )
-
-      term_members =
-        genesInTerm(
-          go_results[[result_name]]$data,
-          whichGO = this_term$GO.ID
-        )[[this_term$GO.ID]]
-
-      discordant_members =
-        sort(
-          intersect(
-            discordant_genes,
-            term_members
-          )
-        )
-
-      other_members =
-        sort(
-          intersect(
-            other_interaction_genes,
-            term_members
-          )
-        )
-
-      comparison_table =
-        matrix(
-          c(
-            length(
-              discordant_members
-            ),
-            length(
-              discordant_genes
-            ) -
-              length(
-                discordant_members
-              ),
-            length(
-              other_members
-            ),
-            length(
-              other_interaction_genes
-            ) -
-              length(
-                other_members
-              )
-          ),
-          nrow = 2,
-          byrow = TRUE
-        )
-
-      fisher_result =
-        fisher.test(
-          comparison_table,
-          alternative = "greater"
-        )
-
-      data.frame(
-        ontology =
-          this_term$ontology,
-        GO.ID =
-          this_term$GO.ID,
-        Term =
-          this_term$Term,
-        n_discordant =
-          length(
-            discordant_genes
-          ),
-        n_discordant_member =
-          length(
-            discordant_members
-          ),
-        prop_discordant =
-          length(
-            discordant_members
-          ) /
-          length(
-            discordant_genes
-          ),
-        n_other_interaction =
-          length(
-            other_interaction_genes
-          ),
-        n_other_interaction_member =
-          length(
-            other_members
-          ),
-        prop_other_interaction =
-          length(
-            other_members
-          ) /
-          length(
-            other_interaction_genes
-          ),
-        odds_ratio =
-          unname(
-            fisher_result$estimate
-          ),
-        fisher_p =
-          fisher_result$p.value,
-        discordant_genes =
-          paste(
-            discordant_members,
-            collapse = ";"
-          ),
-        other_interaction_genes =
-          paste(
-            other_members,
-            collapse = ";"
-          ),
-        stringsAsFactors = FALSE
-      )
-    }
-  )
-
-ribosome_class_contrast =
-  do.call(
-    rbind,
-    ribosome_contrast_rows
-  )
-
-ribosome_class_contrast$fisher_q =
-  p.adjust(
-    ribosome_class_contrast$fisher_p,
-    method = "BH"
-  )
-
-gene_set_manifest =
-  bind_rows(
-    lapply(
-      names(gene_sets),
-      function(set_name) {
-        data.frame(
-          gene_set = set_name,
-          gene = gene_sets[[set_name]],
-          stringsAsFactors = FALSE
-        )
-      }
-    )
-  ) %>%
-  arrange(
-    gene_set,
-    gene
-  )
-
-go_annotation_summary = data.frame(
-  n_universe = length(supported_analyte),
-  n_universe_go_annotated = length(annotated_genes),
-  frac_universe_go_annotated =
-    length(annotated_genes) /
-    length(supported_analyte),
-  stringsAsFactors = FALSE
+discordant_genes = gene_sets$discordant
+other_interaction_genes = setdiff(
+  gene_sets$all_interaction,
+  discordant_genes
 )
+
+ribosome_term_members = vector(
+  "list",
+  nrow(ribosome_focus_terms)
+)
+
+ribosome_contrast_rows = lapply(
+  seq_len(nrow(ribosome_focus_terms)),
+  function(i) {
+
+    this_term = ribosome_focus_terms[i, , drop = FALSE]
+    result_name = paste(
+      "all_interaction",
+      this_term$ontology,
+      sep = "_"
+    )
+
+    term_members = genesInTerm(
+      go_objects[[result_name]],
+      whichGO = this_term$GO.ID
+    )[[this_term$GO.ID]]
+
+    ribosome_term_members[[i]] <<- term_members
+
+    discordant_members = sort(
+      intersect(discordant_genes, term_members)
+    )
+
+    other_members = sort(
+      intersect(other_interaction_genes, term_members)
+    )
+
+    comparison_table = matrix(
+      c(
+        length(discordant_members),
+        length(discordant_genes) - length(discordant_members),
+        length(other_members),
+        length(other_interaction_genes) - length(other_members)
+      ),
+      nrow = 2,
+      byrow = TRUE
+    )
+
+    fisher_result = fisher.test(
+      comparison_table,
+      alternative = "greater"
+    )
+
+    data.frame(
+      ontology = this_term$ontology,
+      GO.ID = this_term$GO.ID,
+      Term = this_term$Term,
+      n_discordant = length(discordant_genes),
+      n_discordant_member = length(discordant_members),
+      n_other_interaction = length(other_interaction_genes),
+      n_other_interaction_member = length(other_members),
+      odds_ratio = unname(fisher_result$estimate),
+      fisher_p = fisher_result$p.value,
+      discordant_genes = paste(discordant_members, collapse = ";"),
+      other_interaction_genes = paste(other_members, collapse = ";"),
+      stringsAsFactors = FALSE
+    )
+  }
+)
+
+ribosome_contrast = do.call(
+  rbind,
+  ribosome_contrast_rows
+)
+
+ribosome_contrast$fisher_q = p.adjust(
+  ribosome_contrast$fisher_p,
+  method = "BH"
+)
+
+ribosomal_subunit_row = ribosome_contrast[
+  ribosome_contrast$GO.ID == "GO:0044391",
+  ,
+  drop = FALSE
+]
+
+if (
+  ribosomal_subunit_row$n_discordant_member != 21L ||
+  ribosomal_subunit_row$n_other_interaction_member != 1L
+) {
+  stop("Unexpected ribosomal-subunit class contrast.")
+}
+
+ribosome_related_genes = intersect(
+  gene_sets$all_interaction,
+  unique(unlist(ribosome_term_members))
+)
+
+########################
+# MKT1 / BUL2 SUMMARY  #
+########################
+
+# These are the 100-kb hotspot bins used for the interaction-QTL
+# hotspot summaries in the manuscript.
+
+peak = parse_marker(
+  qtls_aug_analyte_ixn$marker
+)
+
+if (
+  any(!is.finite(peak$chr)) ||
+  any(!is.finite(peak$position))
+) {
+  stop("Could not parse at least one interaction-QTL peak marker.")
+}
+
+hotspot = rep(
+  NA_character_,
+  nrow(qtls_aug_analyte_ixn)
+)
+
+hotspot[
+  peak$chr == 14 &
+  peak$position >= 400000 &
+  peak$position < 500000
+] = "MKT1"
+
+hotspot[
+  peak$chr == 13 &
+  peak$position >= 0 &
+  peak$position < 100000
+] = "BUL2"
+
+summarize_hotspot = function(hotspot_name) {
+
+  x = qtls_aug_analyte_ixn[
+    hotspot == hotspot_name,
+    ,
+    drop = FALSE
+  ]
+
+  discordant = x$bin == "line cross"
+
+  data.frame(
+    hotspot = hotspot_name,
+    n_strict_interaction = nrow(x),
+    n_discordant = sum(discordant),
+    n_mRNA_specific = sum(x$bin == "mRNA specific"),
+    n_protein_specific = sum(x$bin == "protein specific"),
+    n_same_direction = sum(x$bin == "same direction"),
+    n_discordant_ribosome_related = sum(
+      discordant &
+      x$gene %in% ribosome_related_genes
+    ),
+    n_discordant_RM_RNA_down_protein_up = sum(
+      discordant &
+      x$mRNA_effect < 0 &
+      x$protein_effect > 0
+    ),
+    stringsAsFactors = FALSE
+  )
+}
+
+hotspot_summary = rbind(
+  summarize_hotspot("MKT1"),
+  summarize_hotspot("BUL2")
+)
+
+mkt1 = hotspot_summary[
+  hotspot_summary$hotspot == "MKT1",
+  ,
+  drop = FALSE
+]
+
+bul2 = hotspot_summary[
+  hotspot_summary$hotspot == "BUL2",
+  ,
+  drop = FALSE
+]
+
+if (
+  mkt1$n_strict_interaction != 36L ||
+  mkt1$n_discordant != 26L ||
+  mkt1$n_discordant_ribosome_related != 21L ||
+  mkt1$n_discordant_RM_RNA_down_protein_up != 26L
+) {
+  stop("Unexpected MKT1 interaction summary.")
+}
+
+if (
+  bul2$n_strict_interaction != 11L ||
+  bul2$n_protein_specific != 9L
+) {
+  stop("Unexpected BUL2 interaction summary.")
+}
 
 ################
 # SAVE OUTPUTS #
 ################
 
 write.table(
-  all_go_results,
-  file = paste0(
-    go_asys,
-    "analyte_interaction_GO_full.tsv"
-  ),
-  sep = "\t",
-  quote = FALSE,
-  row.names = FALSE
-)
-
-write.table(
-  go_summary,
-  file = paste0(
-    go_asys,
-    "analyte_interaction_GO_summary.tsv"
-  ),
-  sep = "\t",
-  quote = FALSE,
-  row.names = FALSE
-)
-
-write.table(
-  go_report,
+  significant_go,
   file = paste0(
     go_asys,
     "analyte_interaction_GO_report.tsv"
@@ -727,10 +601,10 @@ write.table(
 )
 
 write.table(
-  gene_set_manifest,
+  key_go,
   file = paste0(
     go_asys,
-    "analyte_interaction_gene_sets.tsv"
+    "analyte_interaction_GO_key.tsv"
   ),
   sep = "\t",
   quote = FALSE,
@@ -738,18 +612,7 @@ write.table(
 )
 
 write.table(
-  go_annotation_summary,
-  file = paste0(
-    go_asys,
-    "GO_annotation_summary.tsv"
-  ),
-  sep = "\t",
-  quote = FALSE,
-  row.names = FALSE
-)
-
-write.table(
-  ribosome_class_contrast,
+  ribosome_contrast,
   file = paste0(
     go_asys,
     "analyte_interaction_ribosome_class_contrast.tsv"
@@ -759,35 +622,23 @@ write.table(
   row.names = FALSE
 )
 
-go_workbook = list(
-  summary = go_summary,
-  significant_terms = go_report,
-  ribosome_focus = ribosome_class_contrast,
-  gene_sets = gene_set_manifest,
-  annotation_summary = go_annotation_summary,
-  all_terms = all_go_results
-)
-
-openxlsx::write.xlsx(
-  go_workbook,
+write.table(
+  hotspot_summary,
   file = paste0(
     go_asys,
-    "analyte_interaction_GO_review.xlsx"
+    "analyte_interaction_hotspot_summary.tsv"
   ),
-  asTable = TRUE,
-  overwrite = TRUE
-)
-
-saveRDS(
-  go_results,
-  paste0(
-    go_imed,
-    "analyte_interaction_GO_results.rds"
-  )
+  sep = "\t",
+  quote = FALSE,
+  row.names = FALSE
 )
 
 message("")
-message("GO enrichment complete.")
-message("Output directory: ", go_asys)
+message("GO review analysis complete.")
+message("Production tables written to: ", go_asys)
 message("")
-print(go_summary)
+message("Reviewer-focused GO terms:")
+print(key_go)
+message("")
+message("Hotspot summary:")
+print(hotspot_summary)
