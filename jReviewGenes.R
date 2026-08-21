@@ -47,9 +47,6 @@ review_ab2018 = readRDS(
   )
 )
 
-universe =
-  review_ab2018$expression_universe
-
 supported =
   review_ab2018$supported
 
@@ -59,6 +56,12 @@ background =
 ########################
 # FEATURE DEFINITIONS   #
 ########################
+
+# Test all AB2018 characteristics individually for the analysis record.
+# The main reviewer table is intentionally restricted to four features
+# that directly characterize likely ascertainment of repeatedly measurable
+# mRNA/protein genes: abundance, essentiality, evolutionary conservation,
+# and physical interaction connectivity.
 
 continuous_features = c(
   "expression",
@@ -81,42 +84,35 @@ feature_order = c(
   "expression",
   "essential",
   "hasHumanHomolog",
+  "PPI",
   "hasParalog",
   "isTF",
-  "PPI",
   "GxGStrict",
   "GxGIntermediate",
   "GxGLenient",
-  "dNdS_adjust",
-  "dNdS"
+  "dNdS",
+  "dNdS_adjust"
 )
 
 feature_labels = c(
-  expression = "Expression",
+  expression = "Mean expression (log2 TPM)",
   essential = "Essential gene",
   hasHumanHomolog = "Human homolog",
+  PPI = "Protein-protein interaction partners",
   hasParalog = "Paralog",
   isTF = "Transcription factor",
-  PPI = "Protein-protein interactions",
   GxGStrict = "Genetic interactions, strict",
   GxGIntermediate = "Genetic interactions, intermediate",
   GxGLenient = "Genetic interactions, lenient",
-  dNdS_adjust = "Adjusted dN/dS",
-  dNdS = "dN/dS"
+  dNdS = "dN/dS",
+  dNdS_adjust = "Adjusted dN/dS"
 )
 
-# Keep the main-text table compact by retaining one representative
-# genetic-interaction measure and one dN/dS measure. All features above
-# are still tested individually and retained in the full output.
 main_features = c(
   "expression",
   "essential",
   "hasHumanHomolog",
-  "hasParalog",
-  "isTF",
-  "PPI",
-  "GxGStrict",
-  "dNdS_adjust"
+  "PPI"
 )
 
 ########################
@@ -315,14 +311,14 @@ individual_tests$order = NULL
 
 format_p = function(x) {
   ifelse(
-    x < 0.001,
+    x < 0.01,
     formatC(
       x,
       format = "e",
       digits = 2
     ),
     sprintf(
-      "%.3f",
+      "%.2f",
       x
     )
   )
@@ -360,7 +356,7 @@ main_table$supported_genes = ifelse(
     100 * main_table$supported_prop
   ),
   sprintf(
-    "%.3f [%.3f, %.3f] (n=%d)",
+    "%.2f [%.2f, %.2f] (n=%d)",
     main_table$supported_median,
     main_table$supported_q25,
     main_table$supported_q75,
@@ -377,7 +373,7 @@ main_table$other_genes = ifelse(
     100 * main_table$background_prop
   ),
   sprintf(
-    "%.3f [%.3f, %.3f] (n=%d)",
+    "%.2f [%.2f, %.2f] (n=%d)",
     main_table$background_median,
     main_table$background_q25,
     main_table$background_q75,
@@ -394,7 +390,7 @@ main_table$effect = ifelse(
     main_table$effect_high
   ),
   sprintf(
-    "r = %.3f",
+    "r = %.2f",
     main_table$effect_estimate
   )
 )
@@ -402,11 +398,6 @@ main_table$effect = ifelse(
 main_table$p =
   format_p(
     main_table$p_value
-  )
-
-main_table$BH_FDR =
-  format_p(
-    main_table$q_value
   )
 
 main_table =
@@ -417,23 +408,19 @@ main_table =
       "supported_genes",
       "other_genes",
       "test",
-      "effect_metric",
       "effect",
-      "p",
-      "BH_FDR"
+      "p"
     ),
     drop = FALSE
   ]
 
 names(main_table) = c(
-  "Feature",
-  "Supported genes",
-  "Other genes",
+  "Characteristic",
+  "385 jointly analyzed genes",
+  "Other expressed genes",
   "Test",
-  "Effect metric",
-  "Effect",
-  "P",
-  "BH FDR"
+  "Effect size",
+  "P"
 )
 
 ########################
@@ -462,8 +449,7 @@ write.table(
   row.names = FALSE
 )
 
-# Keep the legacy unadjusted filename synchronized for compatibility with
-# any downstream notes generated before this simplification.
+# Preserve the old unadjusted filename for compatibility with review notes.
 write.table(
   individual_tests,
   file = paste0(
@@ -502,7 +488,7 @@ readme = data.frame(
     "Supported gene set",
     "Continuous features",
     "Binary features",
-    "Multiple-testing correction",
+    "Full analysis",
     "Main-table selection"
   ),
   description = c(
@@ -510,8 +496,8 @@ readme = data.frame(
     "385 genes measured in at least two mRNA and two protein datasets",
     "Wilcoxon rank-sum; effect size is rank-biserial correlation",
     "Fisher exact test; effect size is odds ratio with 95% confidence interval",
-    "Benjamini-Hochberg across all 11 individually tested gene characteristics",
-    "Main table removes redundant GxG thresholds and raw dN/dS; all 11 tests remain in the full output"
+    "All 11 available AB2018 characteristics are tested individually; BH values are retained in the full output",
+    "Main table reports four preselected ascertainment-relevant characteristics: expression abundance, essentiality, human-homolog status, and protein-protein interaction connectivity"
   ),
   stringsAsFactors = FALSE
 )
