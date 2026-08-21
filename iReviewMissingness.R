@@ -16,73 +16,9 @@ ensure_directory(review_asys)
 
 load(paste0(raw, "chrFeatures.rda"))
 
-summary_rows = list()
-
 ####################
 # HELPER FUNCTIONS #
 ####################
-
-add_summary = function(
-  dataset,
-  feature_unit,
-  n_features_before,
-  n_features_after,
-  sample_unit,
-  n_samples_before,
-  n_samples_after
-) {
-
-  summary_rows[[length(summary_rows) + 1L]] <<- data.frame(
-    dataset = dataset,
-    feature_unit = feature_unit,
-    n_features_before = n_features_before,
-    n_features_after = n_features_after,
-    n_features_removed = n_features_before - n_features_after,
-    sample_unit = sample_unit,
-    n_samples_before = n_samples_before,
-    n_samples_after = n_samples_after,
-    n_samples_removed = n_samples_before - n_samples_after,
-    stringsAsFactors = FALSE
-  )
-}
-
-audit_matrix = function(
-  x,
-  dataset,
-  feature_margin,
-  feature_unit,
-  sample_unit,
-  apply_filter = TRUE
-) {
-
-  if (is.null(dim(x)) || length(dim(x)) != 2L) {
-    stop("Expected a two-dimensional object for ", dataset, ".")
-  }
-
-  before = dim(x)
-
-  filtered = if (isTRUE(apply_filter)) {
-    rmIterNA(x, t = threshNA)
-  } else {
-    x
-  }
-
-  after = dim(filtered)
-
-  sample_margin = if (feature_margin == 1L) 2L else 1L
-
-  add_summary(
-    dataset = dataset,
-    feature_unit = feature_unit,
-    n_features_before = before[feature_margin],
-    n_features_after = after[feature_margin],
-    sample_unit = sample_unit,
-    n_samples_before = before[sample_margin],
-    n_samples_after = after[sample_margin]
-  )
-
-  invisible(NULL)
-}
 
 read_gds_soft_table = function(path) {
 
@@ -188,7 +124,6 @@ brem_channel_sets = function(
     strain_key$strain
   )
 
-  before_genes = unique(as.character(dat$IDENTIFIER))
   before_arrays = colnames(dat)[3:ncol(dat)]
   before_strains = unique(
     strain_key$strain[
@@ -202,7 +137,6 @@ brem_channel_sets = function(
     t = threshNA
   )
 
-  after_genes = unique(as.character(filtered$IDENTIFIER))
   after_arrays = colnames(filtered)[3:ncol(filtered)]
   after_strains = unique(
     strain_key$strain[
@@ -212,8 +146,8 @@ brem_channel_sets = function(
   after_strains = after_strains[!is.na(after_strains)]
 
   list(
-    before_genes = before_genes,
-    after_genes = after_genes,
+    before_genes = unique(as.character(dat$IDENTIFIER)),
+    after_genes = unique(as.character(filtered$IDENTIFIER)),
     before_strains = before_strains,
     after_strains = after_strains
   )
@@ -247,24 +181,52 @@ audit_brem = function(
     ch2$after_genes
   )
 
-  strains_before = intersect(
+  segregants_before = intersect(
     ch1$before_strains,
     ch2$before_strains
   )
 
-  strains_after = intersect(
+  segregants_after = intersect(
     ch1$after_strains,
     ch2$after_strains
   )
 
-  add_summary(
-    dataset = study,
-    feature_unit = "gene",
-    n_features_before = length(genes_before),
-    n_features_after = length(genes_after),
-    sample_unit = "segregant",
-    n_samples_before = length(strains_before),
-    n_samples_after = length(strains_after)
+  data.frame(
+    Dataset = study,
+    `Genes before filter` = length(genes_before),
+    `Genes removed` = length(
+      setdiff(genes_before, genes_after)
+    ),
+    `Segregants before filter` = length(segregants_before),
+    `Segregants removed` = length(
+      setdiff(segregants_before, segregants_after)
+    ),
+    check.names = FALSE,
+    stringsAsFactors = FALSE
+  )
+}
+
+audit_standard = function(
+  phenotype,
+  study
+) {
+
+  genes_before = rownames(phenotype)
+  segregants_before = colnames(phenotype)
+
+  filtered = rmIterNA(
+    phenotype,
+    t = threshNA
+  )
+
+  data.frame(
+    Dataset = study,
+    `Genes before filter` = nrow(phenotype),
+    `Genes removed` = nrow(phenotype) - nrow(filtered),
+    `Segregants before filter` = ncol(phenotype),
+    `Segregants removed` = ncol(phenotype) - ncol(filtered),
+    check.names = FALSE,
+    stringsAsFactors = FALSE
   )
 }
 
@@ -272,106 +234,21 @@ audit_brem = function(
 # BREM 2002 AND 2005   #
 ########################
 
-audit_brem(
-  study = "Brem_2002",
+brem_2002 = audit_brem(
+  study = "Brem 2002",
   file1 = "GDS91.soft",
   pattern1 = "BY-",
   file2 = "GDS92.soft",
   pattern2 = "-BY"
 )
 
-audit_brem(
-  study = "Brem_2005",
+brem_2005 = audit_brem(
+  study = "Brem 2005",
   file1 = "GDS1115.soft",
   pattern1 = "Cy5",
   file2 = "GDS1116.soft",
   pattern2 = "Cy3"
 )
-
-########################
-# SMITH 2008           #
-########################
-
-smith = readxl::read_excel(
-  paste0(raw, "pbio.0060083.sd002.xls")
-) %>%
-  as.data.frame()
-
-rownames(smith) = sapply(
-  smith$NAME,
-  function(x) strsplit(x, "\\|\\|")
-) %>%
-  (function(x) sapply(x, function(y) y[4])) %>%
-  (function(x) sapply(x, function(y) gsub(" ", "", y)))
-
-smith = smith[, -c(1:2)]
-genes = rownames(smith)
-sample_names = colnames(smith)
-
-smith = apply(
-  smith,
-  c(1, 2),
-  as.numeric
-) %>%
-  as.matrix() %>%
-  t()
-
-colnames(smith) = genes
-rownames(smith) = sample_names
-
-smith_meta = sapply(
-  sample_names,
-  function(x) strsplit(x, " ")
-) %>%
-  (function(x) do.call(rbind, x)) %>%
-  `colnames<-`(c("id", "segregant", "condition")) %>%
-  as.data.frame()
-
-smith_eth = smith[
-  smith_meta$condition == "ethanol",
-  ,
-  drop = FALSE
-]
-
-smith_glc = smith[
-  smith_meta$condition == "glucose",
-  ,
-  drop = FALSE
-]
-
-rownames(smith_eth) = smith_meta$segregant[
-  smith_meta$condition == "ethanol"
-]
-
-rownames(smith_glc) = smith_meta$segregant[
-  smith_meta$condition == "glucose"
-]
-
-audit_matrix(
-  smith_eth,
-  "SmithEth_2008",
-  feature_margin = 2L,
-  feature_unit = "gene",
-  sample_unit = "segregant"
-)
-
-audit_matrix(
-  smith_glc,
-  "SmithGlc_2008",
-  feature_margin = 2L,
-  feature_unit = "gene",
-  sample_unit = "segregant"
-)
-
-rm(
-  smith,
-  smith_meta,
-  smith_eth,
-  smith_glc,
-  genes,
-  sample_names
-)
-gc()
 
 ########################
 # KHAN 2009            #
@@ -385,12 +262,9 @@ khan = read.delim(
 ) %>%
   as.matrix()
 
-audit_matrix(
+khan_2009 = audit_standard(
   khan,
-  "Khan_2009",
-  feature_margin = 1L,
-  feature_unit = "gene",
-  sample_unit = "segregant"
+  "Khan 2009"
 )
 
 rm(khan)
@@ -417,164 +291,75 @@ colnames(foss) = gsub(
   colnames(foss)
 )
 
-audit_matrix(
+foss_2011 = audit_standard(
   foss,
-  "Foss_2011",
-  feature_margin = 1L,
-  feature_unit = "gene",
-  sample_unit = "segregant"
+  "Foss 2011"
 )
 
 rm(foss)
 gc()
 
 ########################
-# DATASETS WITH NO LOSS #
+# REVIEW-READY SUMMARY #
 ########################
 
-picotti = read.csv(
-  paste0(raw, "Picotti_2013_SRM_dataset.csv"),
-  check.names = FALSE
+missingness_summary = rbind(
+  brem_2002,
+  brem_2005,
+  khan_2009,
+  foss_2011
 )
 
-picotti = as.matrix(
-  picotti[, -1, drop = FALSE]
-)
-storage.mode(picotti) = "numeric"
-
-audit_matrix(
-  picotti,
-  "Picotti_2013",
-  feature_margin = 1L,
-  feature_unit = "protein measurement",
-  sample_unit = "strain measurement",
-  apply_filter = FALSE
+expected_genes_before = c(
+  6167L,
+  6167L,
+  539L,
+  354L
 )
 
-rm(picotti)
-gc()
-
-load(paste0(raw, "log2_t.tpm.matrix.RData"))
-
-audit_matrix(
-  t.tpm.matrix,
-  "Albert_2018",
-  feature_margin = 2L,
-  feature_unit = "gene",
-  sample_unit = "segregant",
-  apply_filter = FALSE
+expected_genes_removed = c(
+  490L,
+  263L,
+  159L,
+  116L
 )
 
-rm(t.tpm.matrix)
-gc()
-
-grossbach_rna = readxl::read_excel(
-  paste0(raw, "msb202110712-sup-0003-datasetev1.xlsx"),
-  sheet = "transcriptome"
-) %>%
-  as.data.frame()
-
-grossbach_rna_genes = grossbach_rna$gene
-grossbach_rna = t(grossbach_rna[, -1])
-colnames(grossbach_rna) = grossbach_rna_genes
-
-audit_matrix(
-  grossbach_rna,
-  "GrossbachRNA_2022",
-  feature_margin = 2L,
-  feature_unit = "gene",
-  sample_unit = "culture measurement",
-  apply_filter = FALSE
+expected_segregants_removed = c(
+  0L,
+  3L,
+  2L,
+  0L
 )
 
-rm(grossbach_rna, grossbach_rna_genes)
-gc()
-
-grossbach_prt = readxl::read_excel(
-  paste0(raw, "msb202110712-sup-0003-datasetev1.xlsx"),
-  sheet = "proteome",
-  na = "NA"
-) %>%
-  as.data.frame()
-
-grossbach_prt_genes = grossbach_prt$gene
-grossbach_prt = t(grossbach_prt[, -1])
-colnames(grossbach_prt) = grossbach_prt_genes
-
-audit_matrix(
-  grossbach_prt,
-  "GrossbachPRT_2022",
-  feature_margin = 2L,
-  feature_unit = "gene",
-  sample_unit = "culture measurement"
-)
-
-rm(grossbach_prt, grossbach_prt_genes)
-gc()
-
-############################
-# FINAL MAPPING DIMENSIONS #
-############################
-
-mapping_studies = c(
-  "Brem_2002",
-  "Brem_2005",
-  "SmithEth_2008",
-  "SmithGlc_2008",
-  "Khan_2009",
-  "Foss_2011",
-  "Picotti_2013",
-  "Albert_2018",
-  "GrossbachRNA_2022",
-  "GrossbachPRT_2022"
-)
-
-mapping_dimensions = lapply(
-  mapping_studies,
-  function(study_name) {
-
-    env = new.env(parent = emptyenv())
-
-    load(
-      paste0(imed, study_name, ".rda"),
-      envir = env
-    )
-
-    study = env[[study_name]]
-
-    data.frame(
-      dataset = study_name,
-      final_n_segregants = nrow(study$pheno),
-      final_n_features = ncol(study$pheno),
-      stringsAsFactors = FALSE
-    )
-  }
-) %>%
-  bind_rows()
+if (
+  !identical(
+    as.integer(missingness_summary$`Genes before filter`),
+    expected_genes_before
+  ) ||
+  !identical(
+    as.integer(missingness_summary$`Genes removed`),
+    expected_genes_removed
+  ) ||
+  !identical(
+    as.integer(missingness_summary$`Segregants removed`),
+    expected_segregants_removed
+  )
+) {
+  stop("Missingness counts differ from the reviewed results.")
+}
 
 ################
-# SAVE OUTPUTS #
+# SAVE OUTPUT  #
 ################
 
-missingness_summary = bind_rows(summary_rows)
+output_file = paste0(
+  review_asys,
+  "missingness_filter_summary.tsv"
+)
 
 write.table(
   missingness_summary,
-  file = paste0(
-    review_asys,
-    "missingness_filter_summary.tsv"
-  ),
-  sep = "\t",
-  quote = FALSE,
-  row.names = FALSE
-)
-
-write.table(
-  mapping_dimensions,
-  file = paste0(
-    review_asys,
-    "final_mapping_dimensions.tsv"
-  ),
+  file = output_file,
   sep = "\t",
   quote = FALSE,
   row.names = FALSE
@@ -582,10 +367,6 @@ write.table(
 
 message("")
 message("Missingness audit complete.")
+message("Output: ", output_file)
 message("")
-print(missingness_summary)
-message("")
-message("Final mapping dimensions:")
-print(mapping_dimensions)
-message("")
-message("Outputs written to: ", review_asys)
+print(missingness_summary, row.names = FALSE)
