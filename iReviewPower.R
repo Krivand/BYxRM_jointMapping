@@ -1,6 +1,6 @@
 ########################################
 ########################################
-## GENETICS REVIEW POWER SIMULATION   ##
+## GENETICS REVIEW POWER ANALYSIS     ##
 ## INDIVIDUAL QTL REDISCOVERY         ##
 ########################################
 ########################################
@@ -21,17 +21,10 @@ ensure_directory(review_asys)
 ensure_directory(power_imed)
 ensure_directory(power_asys)
 
-seed = suppressWarnings(
+validation_seed = suppressWarnings(
   as.integer(Sys.getenv("REVIEW_POWER_SEED", "20260818"))
 )
-if (is.na(seed)) seed = 20260818L
-
-n_synthetic = suppressWarnings(
-  as.integer(Sys.getenv("REVIEW_POWER_NQTL", "250000"))
-)
-if (is.na(n_synthetic) || n_synthetic < 10000L) {
-  stop("REVIEW_POWER_NQTL must be at least 10000.")
-}
+if (is.na(validation_seed)) validation_seed = 20260818L
 
 n_validation = suppressWarnings(
   as.integer(Sys.getenv("REVIEW_POWER_NVALID", "5000"))
@@ -40,10 +33,6 @@ if (is.na(n_validation) || n_validation < 1000L) {
   stop("REVIEW_POWER_NVALID must be at least 1000.")
 }
 
-message(
-  "Synthetic QTL draws: ",
-  format(n_synthetic, big.mark = ",")
-)
 message(
   "Direct-validation replicates per setting: ",
   format(n_validation, big.mark = ",")
@@ -64,10 +53,7 @@ load_single_rda = function(path, object_name = NULL) {
 
   if (!is.null(object_name)) {
     if (!(object_name %in% loaded)) {
-      stop(
-        "Expected object '", object_name,
-        "' in ", path
-      )
+      stop("Expected object '", object_name, "' in ", path)
     }
     return(env[[object_name]])
   }
@@ -104,14 +90,20 @@ correlation_call_prob = function(rho, n, lod) {
   if (length(lod) != 1L || !is.finite(lod)) {
     stop("lod must be one finite scalar.")
   }
+  if (any(!is.finite(rho))) {
+    stop("rho contains non-finite values.")
+  }
+  if (any(abs(rho) >= 1)) {
+    stop("rho must satisfy abs(rho) < 1.")
+  }
 
-  rho = pmax(-0.999999, pmin(0.999999, rho))
   rcrit = lod_to_rcrit(lod = lod, n = n)
   df = n - 2
   tcrit = rcrit * sqrt(df / (1 - rcrit ^ 2))
 
-  # This noncentrality parameter closely matches direct simulation of
-  # standardized phenotype-genotype correlations under the mapper's LOD rule.
+  # Analytic approximation to the repeated-sampling distribution of the
+  # correlation-test statistic under a nonzero population correlation.
+  # This approximation is checked below by explicit phenotype simulation.
   ncp = rho * sqrt((n - 1) / (1 - rho ^ 2))
 
   p_positive = stats::pt(
@@ -168,30 +160,12 @@ parse_fdr_thresholds = function(path) {
   values[is.finite(values)]
 }
 
-make_probability_lookup = function(
+probability_matrix = function(
+  rho,
   study_design,
   lod,
-  rho_grid = seq(-0.95, 0.95, by = 0.0005)
+  component
 ) {
-
-  out = lapply(
-    seq_len(nrow(study_design)),
-    function(i) {
-      probs = correlation_call_prob(
-        rho = rho_grid,
-        n = study_design$n[[i]],
-        lod = lod
-      )
-      probs$study = study_design$study[[i]]
-      probs
-    }
-  )
-
-  names(out) = study_design$study
-  out
-}
-
-probability_matrix = function(rho, lookup, component) {
 
   if (!(component %in% c(
     "p_positive",
@@ -202,33 +176,28 @@ probability_matrix = function(rho, lookup, component) {
   }
 
   out = vapply(
-    names(lookup),
-    function(study) {
-      stats::approx(
-        x = lookup[[study]]$rho,
-        y = lookup[[study]][[component]],
-        xout = rho,
-        rule = 2,
-        ties = "ordered"
-      )$y
+    seq_len(nrow(study_design)),
+    function(i) {
+      probs = correlation_call_prob(
+        rho = rho,
+        n = study_design$n[[i]],
+        lod = lod
+      )
+      probs[[component]]
     },
     numeric(length(rho))
   )
 
-  colnames(out) = names(lookup)
+  colnames(out) = study_design$study
   out
 }
 
-pair_table_from_components = function(
+pair_table_from_shared_effects = function(
   numerator_same,
-  numerator_any,
   denominator_query,
   study_design,
-  scenario,
-  effect_scale,
   lod,
-  heterogeneity_mode = "none",
-  heterogeneity_fraction = 0
+  threshold_label = "reference"
 ) {
 
   study_names = study_design$study
@@ -246,26 +215,16 @@ pair_table_from_components = function(
   query_index = match(pairs$query, study_names)
   target_index = match(pairs$target, study_names)
 
-  pairs$expected_query_calls = denominator_query[query_index]
-  pairs$expected_both_detected = numerator_any[
-    cbind(query_index, target_index)
-  ]
-  pairs$expected_both_same_direction = numerator_same[
-    cbind(query_index, target_index)
-  ]
+  pairs$query_detection_weight_sum =
+    denominator_query[query_index]
+  pairs$joint_same_direction_weight_sum =
+    numerator_same[cbind(query_index, target_index)]
+  pairs$expected_rediscovery =
+    pairs$joint_same_direction_weight_sum /
+    pairs$query_detection_weight_sum
 
-  pairs$rediscovery_any_direction =
-    pairs$expected_both_detected /
-    pairs$expected_query_calls
-  pairs$rediscovery_same_direction =
-    pairs$expected_both_same_direction /
-    pairs$expected_query_calls
-
-  pairs$scenario = scenario
-  pairs$effect_scale = effect_scale
   pairs$lod = lod
-  pairs$heterogeneity_mode = heterogeneity_mode
-  pairs$heterogeneity_fraction = heterogeneity_fraction
+  pairs$threshold = threshold_label
 
   metadata_index = match(pairs$query, study_design$study)
   pairs$query_analyte = study_design$analyte[metadata_index]
@@ -288,58 +247,105 @@ pair_table_from_components = function(
   pairs
 }
 
-expected_pairwise = function(
-  rho_query,
-  rho_target,
-  lookup,
+expected_pairwise_shared = function(
+  rho,
   study_design,
-  scenario,
-  effect_scale,
   lod,
-  heterogeneity_mode = "none",
-  heterogeneity_fraction = 0
+  threshold_label = "reference"
 ) {
 
-  query_positive = probability_matrix(
-    rho = rho_query,
-    lookup = lookup,
+  # Rows are empirical Albert_2018 QTL effect magnitudes. The same row j is
+  # propagated through every study; there is no r_j by r_k cross-product of
+  # different effect sizes. Matrix cross-products below only sum matched row-j
+  # joint detection probabilities across the empirical effect distribution.
+  p_positive = probability_matrix(
+    rho = rho,
+    study_design = study_design,
+    lod = lod,
     component = "p_positive"
   )
-  query_negative = probability_matrix(
-    rho = rho_query,
-    lookup = lookup,
+  p_negative = probability_matrix(
+    rho = rho,
+    study_design = study_design,
+    lod = lod,
     component = "p_negative"
   )
-  target_positive = probability_matrix(
-    rho = rho_target,
-    lookup = lookup,
-    component = "p_positive"
-  )
-  target_negative = probability_matrix(
-    rho = rho_target,
-    lookup = lookup,
-    component = "p_negative"
-  )
-
-  query_detect = query_positive + query_negative
-  target_detect = target_positive + target_negative
+  p_detect = p_positive + p_negative
 
   numerator_same =
-    crossprod(query_positive, target_positive) +
-    crossprod(query_negative, target_negative)
-  numerator_any = crossprod(query_detect, target_detect)
-  denominator_query = colSums(query_detect)
+    crossprod(p_positive, p_positive) +
+    crossprod(p_negative, p_negative)
+  denominator_query = colSums(p_detect)
 
-  pair_table_from_components(
+  pair_table_from_shared_effects(
     numerator_same = numerator_same,
-    numerator_any = numerator_any,
     denominator_query = denominator_query,
     study_design = study_design,
-    scenario = scenario,
-    effect_scale = effect_scale,
     lod = lod,
-    heterogeneity_mode = heterogeneity_mode,
-    heterogeneity_fraction = heterogeneity_fraction
+    threshold_label = threshold_label
+  )
+}
+
+weighted_quantile = function(x, w, probs) {
+
+  keep = is.finite(x) & is.finite(w) & w > 0
+  x = x[keep]
+  w = w[keep]
+
+  if (length(x) == 0L) {
+    return(rep(NA_real_, length(probs)))
+  }
+
+  ord = order(x)
+  x = x[ord]
+  w = w[ord]
+  cw = cumsum(w) / sum(w)
+
+  vapply(
+    probs,
+    function(p) x[which(cw >= p)[1]],
+    numeric(1)
+  )
+}
+
+query_ascertainment_summary = function(
+  rho,
+  study_design,
+  lod
+) {
+
+  p_detect = probability_matrix(
+    rho = rho,
+    study_design = study_design,
+    lod = lod,
+    component = "power"
+  )
+
+  do.call(
+    rbind,
+    lapply(
+      seq_len(nrow(study_design)),
+      function(i) {
+        w = p_detect[, i]
+        q = weighted_quantile(
+          x = rho,
+          w = w,
+          probs = c(0.10, 0.50, 0.90)
+        )
+        data.frame(
+          study = study_design$study[[i]],
+          analyte = study_design$analyte[[i]],
+          n = study_design$n[[i]],
+          mean_reference_rho = mean(rho),
+          mean_rho_given_detection = sum(rho * w) / sum(w),
+          q10_rho_given_detection = q[[1]],
+          median_rho_given_detection = q[[2]],
+          q90_rho_given_detection = q[[3]],
+          detection_weight_sum = sum(w),
+          stringsAsFactors = FALSE
+        )
+      }
+    )
   )
 }
 
@@ -389,146 +395,6 @@ validate_direct_simulation = function(
     ),
     stringsAsFactors = FALSE
   )
-}
-
-fit_observed_overlap_glmm = function(dat) {
-
-  model_data = dat[
-    is.finite(dat$observed_rediscovery) &
-    dat$n_query_eligible > 0L,
-    ,
-    drop = FALSE
-  ]
-
-  model_data$misses =
-    model_data$n_query_eligible -
-    model_data$n_matches
-
-  model_data$comparison =
-    factor(
-      model_data$comparison,
-      levels = c(
-        "mRNA_to_mRNA",
-        "mRNA_to_protein",
-        "protein_to_mRNA",
-        "protein_to_protein"
-      )
-    )
-
-  model_data$query =
-    factor(model_data$query)
-
-  model_data$target =
-    factor(model_data$target)
-
-  fit = lme4::glmer(
-    cbind(
-      n_matches,
-      misses
-    ) ~
-      0 +
-      comparison +
-      (1 | query) +
-      (1 | target),
-    family = stats::binomial(),
-    data = model_data,
-    control = lme4::glmerControl(
-      optimizer = "bobyqa",
-      optCtrl = list(
-        maxfun = 200000
-      )
-    )
-  )
-
-  coef_tab =
-    summary(fit)$coefficients
-
-  estimate =
-    coef_tab[, "Estimate"]
-
-  se =
-    coef_tab[, "Std. Error"]
-
-  comparison =
-    sub(
-      "^comparison",
-      "",
-      rownames(coef_tab)
-    )
-
-  data.frame(
-    comparison = comparison,
-    estimate_logit = estimate,
-    se_logit = se,
-    adjusted_agreement = stats::plogis(
-      estimate
-    ),
-    adjusted_lower_95 = stats::plogis(
-      estimate -
-      1.96 * se
-    ),
-    adjusted_upper_95 = stats::plogis(
-      estimate +
-      1.96 * se
-    ),
-    singular_fit = lme4::isSingular(
-      fit,
-      tol = 1e-4
-    ),
-    n_pairs =
-      as.integer(
-        table(
-          model_data$comparison
-        )[
-          comparison
-        ]
-      ),
-    stringsAsFactors = FALSE
-  )
-}
-
-safe_cor = function(x, y, method = "pearson") {
-  keep = is.finite(x) & is.finite(y)
-  if (sum(keep) < 3L) return(NA_real_)
-  stats::cor(x[keep], y[keep], method = method)
-}
-
-summarize_observed_expected = function(dat, grouping) {
-
-  dat %>%
-    dplyr::filter(
-      is.finite(observed_rediscovery),
-      is.finite(expected_rediscovery)
-    ) %>%
-    dplyr::group_by(
-      dplyr::across(
-        dplyr::all_of(grouping)
-      )
-    ) %>%
-    dplyr::summarise(
-      n_pairs = dplyr::n(),
-      mean_observed = mean(observed_rediscovery),
-      mean_expected = mean(expected_rediscovery),
-      pearson = safe_cor(
-        observed_rediscovery,
-        expected_rediscovery,
-        method = "pearson"
-      ),
-      spearman = safe_cor(
-        observed_rediscovery,
-        expected_rediscovery,
-        method = "spearman"
-      ),
-      mae = mean(abs(
-        observed_rediscovery -
-        expected_rediscovery
-      )),
-      rmse = sqrt(mean((
-        observed_rediscovery -
-        expected_rediscovery
-      ) ^ 2)),
-      .groups = "drop"
-    )
 }
 
 ########################
@@ -607,6 +473,12 @@ if (length(empirical_thresholds) == 0L) {
     )
   )
   lod_reference = 4.5
+  threshold_sensitivity_lod = c(3.5, 4.5, 6)
+  threshold_sensitivity_label = c(
+    "fallback_low",
+    "fallback_reference",
+    "fallback_high"
+  )
   threshold_summary = data.frame(
     statistic = "fallback",
     lod = lod_reference,
@@ -638,6 +510,18 @@ if (length(empirical_thresholds) == 0L) {
     empirical_thresholds,
     na.rm = TRUE
   )
+  threshold_sensitivity_lod = as.numeric(
+    stats::quantile(
+      empirical_thresholds,
+      probs = c(0.10, 0.50, 0.90),
+      names = FALSE
+    )
+  )
+  threshold_sensitivity_label = c(
+    "empirical_q10",
+    "empirical_median",
+    "empirical_q90"
+  )
 }
 
 lod_override = suppressWarnings(
@@ -645,6 +529,8 @@ lod_override = suppressWarnings(
 )
 if (is.finite(lod_override)) {
   lod_reference = lod_override
+  threshold_sensitivity_lod[[2]] = lod_override
+  threshold_sensitivity_label[[2]] = "reference_override"
   message("Using REVIEW_POWER_LOD override: ", lod_reference)
 } else {
   message(
@@ -673,7 +559,7 @@ reference_abs_r = abs(reference_qtls$r)
 reference_abs_r = reference_abs_r[
   is.finite(reference_abs_r) &
   reference_abs_r > 0 &
-  reference_abs_r < 0.999999
+  reference_abs_r < 1
 ]
 
 if (length(reference_abs_r) < 100L) {
@@ -685,25 +571,17 @@ if (length(reference_abs_r) < 100L) {
   )
 }
 
-# Resampling, rather than fitting a parametric distribution, preserves the
-# shape and tails of the effect sizes seen in the best-powered individual
-# study. Downward effect scaling below is retained as a sensitivity analysis
-# because discovered effects are themselves subject to ascertainment.
-effect_fit = data.frame(
+# Each Albert_2018 QTL contributes one equally weighted empirical support
+# point. No bootstrap resampling, parametric fit, global effect scaling, or
+# upper-tail truncation is used in the primary rediscovery calculation.
+effect_reference = data.frame(
   reference_study = reference_study,
   n_reference_qtl = length(reference_abs_r),
-  fit_family = "empirical_resampling_absolute_r",
-  sampling = "with_replacement",
+  reference_distribution =
+    "direct_empirical_absolute_r_among_detected_qtls",
+  weighting = "one_equal_weight_per_mapped_qtl",
   stringsAsFactors = FALSE
 )
-
-set.seed(seed)
-synthetic_abs_r = sample(
-  reference_abs_r,
-  size = n_synthetic,
-  replace = TRUE
-)
-synthetic_abs_r = pmin(synthetic_abs_r, 0.95)
 
 quantile_probs = c(
   0.01,
@@ -716,7 +594,7 @@ quantile_probs = c(
   0.95,
   0.99
 )
-fit_quantiles = data.frame(
+effect_quantiles = data.frame(
   quantile = quantile_probs,
   observed_abs_r = as.numeric(
     stats::quantile(
@@ -725,24 +603,12 @@ fit_quantiles = data.frame(
       names = FALSE
     )
   ),
-  resampled_abs_r = as.numeric(
-    stats::quantile(
-      synthetic_abs_r,
-      probs = quantile_probs,
-      names = FALSE
-    )
-  ),
   stringsAsFactors = FALSE
 )
 
 ############################
-# OBSERVED PAIRWISE OVERLAP #
+# OBSERVED FIGURE 3 OVERLAP #
 ############################
-
-
-########################################
-# REPRODUCE FRANK FIGURE 3 OVERLAPS    #
-########################################
 
 normalize_yeast_chr = function(x) {
 
@@ -765,18 +631,9 @@ normalize_yeast_chr = function(x) {
     "XIII", "XIV", "XV", "XVI"
   )
 
-  idx = match(
-    x,
-    roman
-  )
-
+  idx = match(x, roman)
   use = !is.na(idx)
-
-  x[use] =
-    as.character(
-      idx[use]
-    )
-
+  x[use] = as.character(idx[use])
   x
 }
 
@@ -793,47 +650,23 @@ make_frank_qtl_granges = function(
     "cor_coef"
   )
 
-  missing = setdiff(
-    required,
-    colnames(qtls)
-  )
-
+  missing = setdiff(required, colnames(qtls))
   if (length(missing) > 0L) {
     stop(
       "Frank QTL table missing: ",
-      paste(
-        missing,
-        collapse = ", "
-      )
+      paste(missing, collapse = ", ")
     )
   }
 
-  left = suppressWarnings(
-    as.numeric(
-      qtls$CI_min_base
-    )
-  )
-
-  right = suppressWarnings(
-    as.numeric(
-      qtls$CI_max_base
-    )
-  )
-
-  bad =
-    !is.finite(left) |
-    !is.finite(right)
-
+  left = suppressWarnings(as.numeric(qtls$CI_min_base))
+  right = suppressWarnings(as.numeric(qtls$CI_max_base))
+  bad = !is.finite(left) | !is.finite(right)
   if (any(bad)) {
-    stop(
-      "Non-finite Frank QTL confidence intervals encountered."
-    )
+    stop("Non-finite Frank QTL confidence intervals encountered.")
   }
 
   seq_key = paste(
-    normalize_yeast_chr(
-      qtls$CI_chr
-    ),
+    normalize_yeast_chr(qtls$CI_chr),
     qtls$gene_ID,
     sep = "_"
   )
@@ -841,11 +674,7 @@ make_frank_qtl_granges = function(
   strand = ifelse(
     qtls$cor_coef > 0,
     "+",
-    ifelse(
-      qtls$cor_coef < 0,
-      "-",
-      "*"
-    )
+    ifelse(qtls$cor_coef < 0, "-", "*")
   )
 
   gr = GenomicRanges::GRanges(
@@ -853,28 +682,15 @@ make_frank_qtl_granges = function(
     ranges = IRanges::IRanges(
       start = pmax(
         1,
-        pmin(
-          left,
-          right
-        ) -
-        as.integer(pad)
+        pmin(left, right) - as.integer(pad)
       ),
-      end =
-        pmax(
-          left,
-          right
-        ) +
-        as.integer(pad)
+      end = pmax(left, right) + as.integer(pad)
     ),
     strand = strand
   )
 
-  S4Vectors::mcols(gr)$gene =
-    qtls$gene_ID
-
-  S4Vectors::mcols(gr)$r =
-    qtls$cor_coef
-
+  S4Vectors::mcols(gr)$gene = qtls$gene_ID
+  S4Vectors::mcols(gr)$r = qtls$cor_coef
   gr
 }
 
@@ -887,20 +703,13 @@ make_technical_marker_ranges = function(chr_features) {
     "Stop_Coordinate"
   )
 
-  missing = setdiff(
-    required,
-    colnames(chr_features)
-  )
-
+  missing = setdiff(required, colnames(chr_features))
   if (length(missing) > 0L) {
     stop(
       paste0(
-        "chrFeatures missing columns required for ",
-        "Frank technical-marker exclusions: ",
-        paste(
-          missing,
-          collapse = ", "
-        )
+        "chrFeatures missing columns required for Frank technical-marker ",
+        "exclusions: ",
+        paste(missing, collapse = ", ")
       )
     )
   }
@@ -913,31 +722,19 @@ make_technical_marker_ranges = function(chr_features) {
     KRE33 = "YNL132W"
   )
 
-  idx = match(
-    unname(tech_orf),
-    chr_features$Feature_Name
-  )
-
+  idx = match(unname(tech_orf), chr_features$Feature_Name)
   if (any(is.na(idx))) {
     stop(
       "Technical-marker ORFs missing from chrFeatures: ",
-      paste(
-        names(tech_orf)[is.na(idx)],
-        collapse = ", "
-      )
+      paste(names(tech_orf)[is.na(idx)], collapse = ", ")
     )
   }
 
   left = suppressWarnings(
-    as.numeric(
-      chr_features$Start_Coordinate[idx]
-    )
+    as.numeric(chr_features$Start_Coordinate[idx])
   )
-
   right = suppressWarnings(
-    as.numeric(
-      chr_features$Stop_Coordinate[idx]
-    )
+    as.numeric(chr_features$Stop_Coordinate[idx])
   )
 
   gr = GenomicRanges::GRanges(
@@ -945,20 +742,12 @@ make_technical_marker_ranges = function(chr_features) {
       chr_features$Chromosome[idx]
     ),
     ranges = IRanges::IRanges(
-      start = pmin(
-        left,
-        right
-      ),
-      end = pmax(
-        left,
-        right
-      )
+      start = pmin(left, right),
+      end = pmax(left, right)
     )
   )
 
-  names(gr) =
-    names(tech_orf)
-
+  names(gr) = names(tech_orf)
   gr
 }
 
@@ -981,10 +770,7 @@ frank_technical_markers = function() {
     Picotti_2013 = standard,
     GrossbachRNA_2022 = standard,
     GrossbachPRT_2022 = standard,
-    Albert_2018 = c(
-      "MAT",
-      "KRE33"
-    )
+    Albert_2018 = c("MAT", "KRE33")
   )
 }
 
@@ -996,70 +782,46 @@ build_observed_pairwise_frank = function(
   pad = 10000L
 ) {
 
-  tech_list =
-    frank_technical_markers()
+  tech_list = frank_technical_markers()
 
   pair_grid = expand.grid(
     query = study_design$study,
     target = study_design$study,
     stringsAsFactors = FALSE
   )
-
   pair_grid = pair_grid[
-    pair_grid$query !=
-    pair_grid$target,
+    pair_grid$query != pair_grid$target,
     ,
     drop = FALSE
   ]
 
   out = lapply(
-    seq_len(
-      nrow(pair_grid)
-    ),
+    seq_len(nrow(pair_grid)),
     function(i) {
 
-      query =
-        pair_grid$query[[i]]
+      query = pair_grid$query[[i]]
+      target = pair_grid$target[[i]]
 
-      target =
-        pair_grid$target[[i]]
+      query_genes = colnames(studies[[query]]$pheno)
+      target_genes = colnames(studies[[target]]$pheno)
+      query_qtls = qtl_by_study[[query]]
+      target_qtls = qtl_by_study[[target]]
 
-      query_genes =
-        colnames(
-          studies[[query]]$pheno
-        )
+      # Original Figure 3 denominator: query QTLs must affect genes measured
+      # in the target dataset.
+      query_qtls = query_qtls[
+        query_qtls$gene_ID %in% target_genes,
+        ,
+        drop = FALSE
+      ]
+      n_before_technical = nrow(query_qtls)
 
-      target_genes =
-        colnames(
-          studies[[target]]$pheno
-        )
-
-      query_qtls =
-        qtl_by_study[[query]]
-
-      target_qtls =
-        qtl_by_study[[target]]
-
-      # Frank datasetOverlap(): query QTLs must affect genes
-      # that were measured in the target dataset.
-      query_qtls =
-        query_qtls[
-          query_qtls$gene_ID %in%
-          target_genes,
-          ,
-          drop = FALSE
-        ]
-
-      n_before_technical =
-        nrow(query_qtls)
-
-      # Frank datasetOverlap(): remove technical-marker loci
-      # present in the query cross but absent from the target.
+      # Remove technical loci present in the query cross but absent from the
+      # target cross, matching the original Figure 3 comparison.
       exclude_markers = setdiff(
         tech_list[[query]],
         tech_list[[target]]
       )
-
       n_technical_excluded = 0L
 
       if (
@@ -1068,188 +830,109 @@ build_observed_pairwise_frank = function(
       ) {
 
         left = suppressWarnings(
-          as.numeric(
-            query_qtls$CI_min_base
-          )
+          as.numeric(query_qtls$CI_min_base)
         )
-
         right = suppressWarnings(
-          as.numeric(
-            query_qtls$CI_max_base
+          as.numeric(query_qtls$CI_max_base)
+        )
+
+        query_chr_gr = GenomicRanges::GRanges(
+          seqnames = normalize_yeast_chr(query_qtls$CI_chr),
+          ranges = IRanges::IRanges(
+            start = pmax(
+              1,
+              pmin(left, right) - as.integer(pad)
+            ),
+            end = pmax(left, right) + as.integer(pad)
           )
         )
 
-        query_chr_gr =
-          GenomicRanges::GRanges(
-            seqnames =
-              normalize_yeast_chr(
-                query_qtls$CI_chr
-              ),
-            ranges = IRanges::IRanges(
-              start = pmax(
-                1,
-                pmin(
-                  left,
-                  right
-                ) -
-                as.integer(pad)
-              ),
-              end =
-                pmax(
-                  left,
-                  right
-                ) +
-                as.integer(pad)
-            )
+        technical_overlap = suppressWarnings(
+          GenomicRanges::countOverlaps(
+            query_chr_gr,
+            technical_marker_ranges[exclude_markers],
+            ignore.strand = TRUE
           )
+        ) > 0L
 
-        technical_overlap =
-          suppressWarnings(
-            GenomicRanges::countOverlaps(
-              query_chr_gr,
-              technical_marker_ranges[
-                exclude_markers
-              ],
-              ignore.strand = TRUE
-            )
-          ) > 0L
-
-        n_technical_excluded =
-          sum(
-            technical_overlap
-          )
-
-        query_qtls =
-          query_qtls[
-            !technical_overlap,
-            ,
-            drop = FALSE
-          ]
+        n_technical_excluded = sum(technical_overlap)
+        query_qtls = query_qtls[
+          !technical_overlap,
+          ,
+          drop = FALSE
+        ]
       }
 
-      n_query =
-        nrow(query_qtls)
+      n_query = nrow(query_qtls)
 
       if (
         n_query == 0L ||
         nrow(target_qtls) == 0L
       ) {
-
         n_match = 0L
-
       } else {
+        query_gr = make_frank_qtl_granges(
+          query_qtls,
+          pad = pad
+        )
+        target_gr = make_frank_qtl_granges(
+          target_qtls,
+          pad = pad
+        )
 
-        query_gr =
-          make_frank_qtl_granges(
-            query_qtls,
-            pad = pad
+        overlap_count = suppressWarnings(
+          GenomicRanges::countOverlaps(
+            query_gr,
+            target_gr,
+            ignore.strand = FALSE
           )
-
-        target_gr =
-          make_frank_qtl_granges(
-            target_qtls,
-            pad = pad
-          )
-
-        # Exact Figure 3 overlap statistic:
-        # chromosome + gene must match and strand preserves
-        # the QTL effect direction.
-        overlap_count =
-          suppressWarnings(
-            GenomicRanges::countOverlaps(
-              query_gr,
-              target_gr,
-              ignore.strand = FALSE
-            )
-          )
-
-        n_match =
-          sum(
-            overlap_count > 0L
-          )
+        )
+        n_match = sum(overlap_count > 0L)
       }
 
       data.frame(
         query = query,
         target = target,
-        n_common_genes =
-          length(
-            intersect(
-              query_genes,
-              target_genes
-            )
-          ),
-        n_query_before_technical =
-          n_before_technical,
-        n_technical_excluded =
-          n_technical_excluded,
-        n_query_eligible =
-          n_query,
-        n_target_eligible =
-          sum(
-            target_qtls$gene_ID %in%
-            query_genes
-          ),
-        n_matches =
-          n_match,
-        observed_rediscovery =
-          if (n_query > 0L) {
-            n_match / n_query
-          } else {
-            NA_real_
-          },
+        n_common_genes = length(
+          intersect(query_genes, target_genes)
+        ),
+        n_query_before_technical = n_before_technical,
+        n_technical_excluded = n_technical_excluded,
+        n_query_eligible = n_query,
+        n_target_eligible = sum(
+          target_qtls$gene_ID %in% query_genes
+        ),
+        n_matches = n_match,
+        observed_rediscovery = if (n_query > 0L) {
+          n_match / n_query
+        } else {
+          NA_real_
+        },
         stringsAsFactors = FALSE
       )
     }
   )
 
-  observed =
-    do.call(
-      rbind,
-      out
-    )
+  observed = do.call(rbind, out)
 
-  idx = match(
-    observed$query,
-    study_design$study
-  )
+  idx = match(observed$query, study_design$study)
+  observed$query_analyte = study_design$analyte[idx]
+  observed$query_medium = study_design$medium[idx]
+  observed$query_n = study_design$n[idx]
 
-  observed$query_analyte =
-    study_design$analyte[idx]
-
-  observed$query_medium =
-    study_design$medium[idx]
-
-  observed$query_n =
-    study_design$n[idx]
-
-  idx = match(
-    observed$target,
-    study_design$study
-  )
-
-  observed$target_analyte =
-    study_design$analyte[idx]
-
-  observed$target_medium =
-    study_design$medium[idx]
-
-  observed$target_n =
-    study_design$n[idx]
+  idx = match(observed$target, study_design$study)
+  observed$target_analyte = study_design$analyte[idx]
+  observed$target_medium = study_design$medium[idx]
+  observed$target_n = study_design$n[idx]
 
   observed$comparison = paste0(
     observed$query_analyte,
     "_to_",
     observed$target_analyte
   )
-
   observed$same_medium =
-    observed$query_medium ==
-    observed$target_medium
-
-  observed$interval_padding_bp =
-    as.integer(pad)
-
+    observed$query_medium == observed$target_medium
+  observed$interval_padding_bp = as.integer(pad)
   observed$overlap_definition =
     "Frank_Figure3_overlapsWithStrand"
 
@@ -1257,10 +940,7 @@ build_observed_pairwise_frank = function(
 }
 
 frank_qtls_list = load_single_rda(
-  paste0(
-    imed,
-    "Frank/qtls_list_260204.rda"
-  ),
+  paste0(imed, "Frank/qtls_list_260204.rda"),
   object_name = "qtls_list"
 )
 
@@ -1278,76 +958,47 @@ frank_name_map = c(
 )
 
 missing_frank = setdiff(
-  unname(
-    frank_name_map
-  ),
-  names(
-    frank_qtls_list
-  )
+  unname(frank_name_map),
+  names(frank_qtls_list)
 )
-
 if (length(missing_frank) > 0L) {
   stop(
     "Missing individual datasets from Frank QTL object: ",
-    paste(
-      missing_frank,
-      collapse = ", "
-    )
+    paste(missing_frank, collapse = ", ")
   )
 }
 
 frank_individual_qtls = lapply(
   frank_name_map,
-  function(name) {
-    frank_qtls_list[[name]]
-  }
+  function(name) frank_qtls_list[[name]]
 )
-
-names(
-  frank_individual_qtls
-) =
-  names(
-    frank_name_map
-  )
+names(frank_individual_qtls) = names(frank_name_map)
 
 chrFeatures = load_single_rda(
-  paste0(
-    raw,
-    "chrFeatures.rda"
-  ),
+  paste0(raw, "chrFeatures.rda"),
   object_name = "chrFeatures"
 )
-
-technical_marker_ranges =
-  make_technical_marker_ranges(
-    chrFeatures
-  )
-
-frank_qtl_count_check = data.frame(
-  study =
-    study_design$study,
-  indivFullQTLs =
-    study_design$n_qtl,
-  frank_qtls_list =
-    vapply(
-      study_design$study,
-      function(study) {
-        nrow(
-          frank_individual_qtls[[study]]
-        )
-      },
-      integer(1)
-    ),
-  stringsAsFactors = FALSE
+technical_marker_ranges = make_technical_marker_ranges(
+  chrFeatures
 )
 
+frank_qtl_count_check = data.frame(
+  study = study_design$study,
+  indivFullQTLs = study_design$n_qtl,
+  frank_qtls_list = vapply(
+    study_design$study,
+    function(study) {
+      nrow(frank_individual_qtls[[study]])
+    },
+    integer(1)
+  ),
+  stringsAsFactors = FALSE
+)
 frank_qtl_count_check$match =
   frank_qtl_count_check$indivFullQTLs ==
   frank_qtl_count_check$frank_qtls_list
 
-if (!all(
-  frank_qtl_count_check$match
-)) {
+if (!all(frank_qtl_count_check$match)) {
   stop(
     "Frank/current QTL-count mismatch for: ",
     paste(
@@ -1359,52 +1010,29 @@ if (!all(
   )
 }
 
-write.table(
-  frank_qtl_count_check,
-  file = paste0(
-    power_asys,
-    "frank_qtl_count_check.tsv"
-  ),
-  sep = "\t",
-  quote = FALSE,
-  row.names = FALSE
-)
-
 message(
   "Frank QTL object matches current remap QTL counts for all 10 datasets."
 )
-
 message(
   "Recomputing observed individual-study rediscovery using Frank Figure 3 logic..."
 )
 
-observed_pairwise =
-  build_observed_pairwise_frank(
-    qtl_by_study =
-      frank_individual_qtls,
-    studies =
-      studies,
-    study_design =
-      study_design,
-    technical_marker_ranges =
-      technical_marker_ranges,
-    pad = 10000L
-  )
-
-message(
-  "Fitting manuscript-style observed-overlap GLMM..."
+observed_pairwise = build_observed_pairwise_frank(
+  qtl_by_study = frank_individual_qtls,
+  studies = studies,
+  study_design = study_design,
+  technical_marker_ranges = technical_marker_ranges,
+  pad = 10000L
 )
 
-observed_glmm_summary =
-  fit_observed_overlap_glmm(
-    observed_pairwise
-  )
+########################
+# GENERAL POWER CURVES #
+########################
 
-#########################
-# GENERAL POWER CURVES  #
-#########################
-
-rho_grid = seq(0, 0.70, by = 0.005)
+# This grid is only for showing P(detection | rho, n, L). It is not used as
+# an effect-size distribution and is not averaged to obtain Figure 3 expected
+# rediscovery.
+rho_grid = seq(0, 0.95, by = 0.005)
 power_curves = do.call(
   rbind,
   lapply(
@@ -1431,60 +1059,6 @@ power_curves = do.call(
   )
 )
 
-if (length(empirical_thresholds) > 0L) {
-  threshold_sensitivity_lod = as.numeric(
-    stats::quantile(
-      empirical_thresholds,
-      probs = c(0.10, 0.50, 0.90),
-      names = FALSE
-    )
-  )
-  threshold_sensitivity_label = c(
-    "empirical_q10",
-    "empirical_median",
-    "empirical_q90"
-  )
-} else {
-  threshold_sensitivity_lod = c(3.5, 4.5, 6)
-  threshold_sensitivity_label = c(
-    "lod_3.5",
-    "lod_4.5",
-    "lod_6"
-  )
-}
-
-threshold_sensitivity = do.call(
-  rbind,
-  lapply(
-    seq_along(threshold_sensitivity_lod),
-    function(k) {
-      do.call(
-        rbind,
-        lapply(
-          seq_len(nrow(study_design)),
-          function(i) {
-            rho_values = seq(0.05, 0.70, by = 0.05)
-            probs = correlation_call_prob(
-              rho = rho_values,
-              n = study_design$n[[i]],
-              lod = threshold_sensitivity_lod[[k]]
-            )
-            data.frame(
-              threshold = threshold_sensitivity_label[[k]],
-              lod = threshold_sensitivity_lod[[k]],
-              study = study_design$study[[i]],
-              n = study_design$n[[i]],
-              rho = rho_values,
-              power = probs$power,
-              stringsAsFactors = FALSE
-            )
-          }
-        )
-      )
-    }
-  )
-)
-
 ##############################
 # DIRECT PHENOTYPE VALIDATION #
 ##############################
@@ -1495,15 +1069,22 @@ validation_n = unique(
     study_design$n[
       which.min(
         abs(
-          study_design$n -
-          stats::median(study_design$n)
+          study_design$n - stats::median(study_design$n)
         )
       )
     ],
     max(study_design$n)
   )
 )
-validation_rho = c(0.15, 0.30, 0.50)
+validation_rho = unique(
+  as.numeric(
+    stats::quantile(
+      reference_abs_r,
+      probs = c(0.10, 0.50, 0.90),
+      names = FALSE
+    )
+  )
+)
 validation_grid = expand.grid(
   n = validation_n,
   rho = validation_rho,
@@ -1520,52 +1101,60 @@ validation = do.call(
         rho = validation_grid$rho[[i]],
         lod = lod_reference,
         n_rep = n_validation,
-        seed = seed + i
+        seed = validation_seed + i
       )
     }
   )
 )
 validation$power_difference =
-  validation$simulated_power -
-  validation$analytic_power
+  validation$simulated_power - validation$analytic_power
 validation$direction_difference =
   validation$simulated_same_direction -
   validation$analytic_same_direction
 
 ##################################
-# SHARED-EFFECT REDISCOVERY      #
+# PERFECTLY SHARED REDISCOVERY   #
 ##################################
 
 message(
-  "Building probability lookup at reference LOD..."
+  "Calculating perfectly shared rediscovery directly over ",
+  format(length(reference_abs_r), big.mark = ","),
+  " Albert_2018 QTL effects..."
 )
-reference_lookup = make_probability_lookup(
+
+shared_rediscovery = expected_pairwise_shared(
+  rho = reference_abs_r,
+  study_design = study_design,
+  lod = lod_reference,
+  threshold_label = "reference_median"
+)
+
+query_ascertainment = query_ascertainment_summary(
+  rho = reference_abs_r,
   study_design = study_design,
   lod = lod_reference
 )
 
-effect_scales = round(seq(0.20, 1.00, by = 0.05), 2)
-shared_rediscovery = do.call(
+##################################
+# THRESHOLD SENSITIVITY          #
+##################################
+
+threshold_pairwise = do.call(
   rbind,
   lapply(
-    effect_scales,
-    function(effect_scale) {
+    seq_along(threshold_sensitivity_lod),
+    function(k) {
+      this_lod = threshold_sensitivity_lod[[k]]
       message(
-        "Shared-effect rediscovery: effect scale ",
-        effect_scale
+        "Pairwise threshold sensitivity: ",
+        threshold_sensitivity_label[[k]],
+        " (LOD ", signif(this_lod, 4), ")"
       )
-      rho = pmin(
-        0.95,
-        synthetic_abs_r * effect_scale
-      )
-      expected_pairwise(
-        rho_query = rho,
-        rho_target = rho,
-        lookup = reference_lookup,
+      expected_pairwise_shared(
+        rho = reference_abs_r,
         study_design = study_design,
-        scenario = "perfectly_shared",
-        effect_scale = effect_scale,
-        lod = lod_reference
+        lod = this_lod,
+        threshold_label = threshold_sensitivity_label[[k]]
       )
     }
   )
@@ -1596,180 +1185,9 @@ observed_vs_expected = merge(
   all.x = TRUE,
   sort = FALSE
 )
-observed_vs_expected$expected_rediscovery =
-  observed_vs_expected$rediscovery_same_direction
 observed_vs_expected$difference =
   observed_vs_expected$observed_rediscovery -
   observed_vs_expected$expected_rediscovery
-observed_vs_expected$absolute_error = abs(
-  observed_vs_expected$difference
-)
-observed_vs_expected$squared_error =
-  observed_vs_expected$difference ^ 2
-
-observed_vs_expected_summary =
-  summarize_observed_expected(
-    observed_vs_expected,
-    grouping = "effect_scale"
-  )
-
-observed_vs_expected_by_comparison =
-  summarize_observed_expected(
-    observed_vs_expected,
-    grouping = c(
-      "effect_scale",
-      "comparison"
-    )
-  )
-
-##################################
-# HETEROGENEITY SENSITIVITY      #
-##################################
-
-base_rho = synthetic_abs_r
-base_positive = probability_matrix(
-  rho = base_rho,
-  lookup = reference_lookup,
-  component = "p_positive"
-)
-base_negative = probability_matrix(
-  rho = base_rho,
-  lookup = reference_lookup,
-  component = "p_negative"
-)
-base_detect = base_positive + base_negative
-base_same =
-  crossprod(base_positive, base_positive) +
-  crossprod(base_negative, base_negative)
-base_any = crossprod(base_detect, base_detect)
-base_query = colSums(base_detect)
-
-heterogeneity_modes = list(
-  attenuated = 0.50 * base_rho,
-  target_null = rep(0, length(base_rho)),
-  opposite = -base_rho
-)
-heterogeneity_fractions = c(0.05, 0.10, 0.25)
-heterogeneity_results = list()
-heterogeneity_index = 1L
-
-for (mode in names(heterogeneity_modes)) {
-
-  message("Heterogeneity mode: ", mode)
-  alt_rho = heterogeneity_modes[[mode]]
-
-  alt_positive = probability_matrix(
-    rho = alt_rho,
-    lookup = reference_lookup,
-    component = "p_positive"
-  )
-  alt_negative = probability_matrix(
-    rho = alt_rho,
-    lookup = reference_lookup,
-    component = "p_negative"
-  )
-  alt_detect = alt_positive + alt_negative
-
-  alt_same =
-    crossprod(base_positive, alt_positive) +
-    crossprod(base_negative, alt_negative)
-  alt_any = crossprod(base_detect, alt_detect)
-
-  for (fraction in heterogeneity_fractions) {
-    mixed_same =
-      (1 - fraction) * base_same +
-      fraction * alt_same
-    mixed_any =
-      (1 - fraction) * base_any +
-      fraction * alt_any
-
-    heterogeneity_results[[heterogeneity_index]] =
-      pair_table_from_components(
-        numerator_same = mixed_same,
-        numerator_any = mixed_any,
-        denominator_query = base_query,
-        study_design = study_design,
-        scenario = "heterogeneity_sensitivity",
-        effect_scale = 1,
-        lod = lod_reference,
-        heterogeneity_mode = mode,
-        heterogeneity_fraction = fraction
-      )
-
-    heterogeneity_index = heterogeneity_index + 1L
-  }
-}
-
-null_rho = rep(0, length(base_rho))
-null_positive = probability_matrix(
-  rho = null_rho,
-  lookup = reference_lookup,
-  component = "p_positive"
-)
-null_negative = probability_matrix(
-  rho = null_rho,
-  lookup = reference_lookup,
-  component = "p_negative"
-)
-null_detect = null_positive + null_negative
-null_same =
-  crossprod(base_positive, null_positive) +
-  crossprod(base_negative, null_negative)
-null_any = crossprod(base_detect, null_detect)
-
-heterogeneity_results[[heterogeneity_index]] =
-  pair_table_from_components(
-    numerator_same = null_same,
-    numerator_any = null_any,
-    denominator_query = base_query,
-    study_design = study_design,
-    scenario = "same_locus_null_floor",
-    effect_scale = 1,
-    lod = lod_reference,
-    heterogeneity_mode = "target_null",
-    heterogeneity_fraction = 1
-  )
-
-heterogeneity_rediscovery = do.call(
-  rbind,
-  heterogeneity_results
-)
-
-##################################
-# THRESHOLD SENSITIVITY: PAIRS   #
-##################################
-
-threshold_pairwise = do.call(
-  rbind,
-  lapply(
-    seq_along(threshold_sensitivity_lod),
-    function(k) {
-
-      this_lod = threshold_sensitivity_lod[[k]]
-      message(
-        "Pairwise threshold sensitivity: ",
-        threshold_sensitivity_label[[k]],
-        " (LOD ", signif(this_lod, 4), ")"
-      )
-
-      lookup = make_probability_lookup(
-        study_design = study_design,
-        lod = this_lod
-      )
-      out = expected_pairwise(
-        rho_query = base_rho,
-        rho_target = base_rho,
-        lookup = lookup,
-        study_design = study_design,
-        scenario = "threshold_sensitivity",
-        effect_scale = 1,
-        lod = this_lod
-      )
-      out$threshold = threshold_sensitivity_label[[k]]
-      out
-    }
-  )
-)
 
 observed_threshold_sensitivity = merge(
   threshold_pairwise,
@@ -1778,53 +1196,59 @@ observed_threshold_sensitivity = merge(
   all.x = TRUE,
   sort = FALSE
 )
-observed_threshold_sensitivity$expected_rediscovery =
-  observed_threshold_sensitivity$rediscovery_same_direction
 observed_threshold_sensitivity$difference =
   observed_threshold_sensitivity$observed_rediscovery -
   observed_threshold_sensitivity$expected_rediscovery
 
-observed_threshold_sensitivity_summary =
-  summarize_observed_expected(
-    observed_threshold_sensitivity,
-    grouping = "threshold"
-  )
-
-########################
-# COMPACT SUMMARIES    #
-########################
-
-shared_summary = shared_rediscovery %>%
-  dplyr::group_by(
-    effect_scale,
-    comparison
+observed_vs_expected_summary = observed_vs_expected %>%
+  dplyr::filter(
+    is.finite(observed_rediscovery),
+    is.finite(expected_rediscovery)
   ) %>%
   dplyr::summarise(
     n_pairs = dplyr::n(),
-    mean_rediscovery = mean(rediscovery_same_direction),
-    median_rediscovery = stats::median(
-      rediscovery_same_direction
-    ),
-    minimum_rediscovery = min(rediscovery_same_direction),
-    maximum_rediscovery = max(rediscovery_same_direction),
+    mean_observed = mean(observed_rediscovery),
+    mean_expected = mean(expected_rediscovery),
+    mean_difference = mean(difference)
+  )
+
+observed_vs_expected_by_comparison = observed_vs_expected %>%
+  dplyr::filter(
+    is.finite(observed_rediscovery),
+    is.finite(expected_rediscovery)
+  ) %>%
+  dplyr::group_by(comparison) %>%
+  dplyr::summarise(
+    n_pairs = dplyr::n(),
+    mean_observed = mean(observed_rediscovery),
+    mean_expected = mean(expected_rediscovery),
+    mean_difference = mean(difference),
     .groups = "drop"
   )
 
-heterogeneity_summary = heterogeneity_rediscovery %>%
+observed_threshold_sensitivity_summary =
+  observed_threshold_sensitivity %>%
   dplyr::filter(
-    scenario == "heterogeneity_sensitivity"
+    is.finite(observed_rediscovery),
+    is.finite(expected_rediscovery)
   ) %>%
-  dplyr::group_by(
-    heterogeneity_mode,
-    heterogeneity_fraction,
-    comparison
-  ) %>%
+  dplyr::group_by(threshold, lod) %>%
   dplyr::summarise(
     n_pairs = dplyr::n(),
-    mean_rediscovery = mean(rediscovery_same_direction),
-    median_rediscovery = stats::median(
-      rediscovery_same_direction
-    ),
+    mean_observed = mean(observed_rediscovery),
+    mean_expected = mean(expected_rediscovery),
+    mean_difference = mean(difference),
+    .groups = "drop"
+  )
+
+shared_summary = shared_rediscovery %>%
+  dplyr::group_by(comparison) %>%
+  dplyr::summarise(
+    n_pairs = dplyr::n(),
+    mean_rediscovery = mean(expected_rediscovery),
+    median_rediscovery = stats::median(expected_rediscovery),
+    minimum_rediscovery = min(expected_rediscovery),
+    maximum_rediscovery = max(expected_rediscovery),
     .groups = "drop"
   )
 
@@ -1842,21 +1266,321 @@ observed_summary = observed_pairwise %>%
       observed_rediscovery,
       na.rm = TRUE
     ),
-    pooled_rediscovery =
-      total_matches /
-      total_query_qtl,
+    pooled_rediscovery = total_matches / total_query_qtl,
     .groups = "drop"
   )
+
+########################################
+# ANALYTIC FIGURE 3 CHANCE NULL        #
+########################################
+
+make_chr_lengths = function(chr_features) {
+
+  chr = normalize_yeast_chr(chr_features$Chromosome)
+  left = suppressWarnings(
+    as.numeric(chr_features$Start_Coordinate)
+  )
+  right = suppressWarnings(
+    as.numeric(chr_features$Stop_Coordinate)
+  )
+  endpoint = pmax(left, right, na.rm = TRUE)
+
+  keep =
+    chr %in% as.character(1:16) &
+    is.finite(endpoint)
+
+  lengths = tapply(
+    endpoint[keep],
+    chr[keep],
+    max,
+    na.rm = TRUE
+  )
+  lengths = lengths[as.character(1:16)]
+
+  if (
+    length(lengths) != 16L ||
+    any(!is.finite(lengths))
+  ) {
+    stop("Could not determine all chromosome lengths.")
+  }
+
+  lengths
+}
+
+prepare_frank_query_for_null = function(
+  query,
+  target,
+  pad = 10000L
+) {
+
+  target_genes = colnames(studies[[target]]$pheno)
+  qtls = frank_individual_qtls[[query]]
+  qtls = qtls[
+    qtls$gene_ID %in% target_genes,
+    ,
+    drop = FALSE
+  ]
+
+  tech = frank_technical_markers()
+  exclude = setdiff(
+    tech[[query]],
+    tech[[target]]
+  )
+
+  if (
+    nrow(qtls) > 0L &&
+    length(exclude) > 0L
+  ) {
+
+    left = pmin(
+      as.numeric(qtls$CI_min_base),
+      as.numeric(qtls$CI_max_base)
+    )
+    right = pmax(
+      as.numeric(qtls$CI_min_base),
+      as.numeric(qtls$CI_max_base)
+    )
+
+    gr = GenomicRanges::GRanges(
+      seqnames = normalize_yeast_chr(qtls$CI_chr),
+      ranges = IRanges::IRanges(
+        start = pmax(
+          1,
+          left - as.integer(pad)
+        ),
+        end = right + as.integer(pad)
+      )
+    )
+
+    hit = suppressWarnings(
+      GenomicRanges::countOverlaps(
+        gr,
+        technical_marker_ranges[exclude],
+        ignore.strand = TRUE
+      )
+    ) > 0L
+
+    qtls = qtls[
+      !hit,
+      ,
+      drop = FALSE
+    ]
+  }
+
+  qtls
+}
+
+chance_overlap_pair = function(
+  query,
+  target,
+  chromosome_lengths,
+  pad = 10000L
+) {
+
+  query_qtls = prepare_frank_query_for_null(
+    query = query,
+    target = target,
+    pad = pad
+  )
+  target_qtls = frank_individual_qtls[[target]]
+
+  if (nrow(query_qtls) == 0L) {
+    return(
+      data.frame(
+        query = query,
+        target = target,
+        n_query_eligible = 0L,
+        expected_chance_matches = 0,
+        chance_rediscovery = NA_real_,
+        stringsAsFactors = FALSE
+      )
+    )
+  }
+
+  q_chr = normalize_yeast_chr(query_qtls$CI_chr)
+  t_chr = normalize_yeast_chr(target_qtls$CI_chr)
+
+  q_key = paste(
+    q_chr,
+    query_qtls$gene_ID,
+    sign(query_qtls$cor_coef),
+    sep = "::"
+  )
+  t_key = paste(
+    t_chr,
+    target_qtls$gene_ID,
+    sign(target_qtls$cor_coef),
+    sep = "::"
+  )
+
+  target_groups = split(
+    seq_len(nrow(target_qtls)),
+    t_key
+  )
+
+  q_left = pmin(
+    as.numeric(query_qtls$CI_min_base),
+    as.numeric(query_qtls$CI_max_base)
+  )
+  q_right = pmax(
+    as.numeric(query_qtls$CI_min_base),
+    as.numeric(query_qtls$CI_max_base)
+  )
+  t_left = pmin(
+    as.numeric(target_qtls$CI_min_base),
+    as.numeric(target_qtls$CI_max_base)
+  )
+  t_right = pmax(
+    as.numeric(target_qtls$CI_min_base),
+    as.numeric(target_qtls$CI_max_base)
+  )
+  target_width = t_right - t_left
+
+  probability = vapply(
+    seq_len(nrow(query_qtls)),
+    function(i) {
+
+      idx = target_groups[[q_key[[i]]]]
+      if (is.null(idx) || length(idx) == 0L) {
+        return(0)
+      }
+
+      chr_length = unname(
+        chromosome_lengths[q_chr[[i]]]
+      )
+      widths = target_width[idx]
+      n_starts = floor(chr_length - widths + 1)
+      valid = is.finite(n_starts) & n_starts >= 1
+
+      if (!any(valid)) {
+        return(0)
+      }
+
+      widths = widths[valid]
+      n_starts = n_starts[valid]
+
+      # Both query and target confidence intervals receive 10-kb padding.
+      lower =
+        q_left[[i]] - widths - 2 * as.integer(pad)
+      upper =
+        q_right[[i]] + 2 * as.integer(pad)
+
+      allowed_low = pmax(1, ceiling(lower))
+      allowed_high = pmin(n_starts, floor(upper))
+      n_allowed = pmax(
+        0,
+        allowed_high - allowed_low + 1
+      )
+      p_each = pmin(1, n_allowed / n_starts)
+
+      1 - prod(1 - p_each)
+    },
+    numeric(1)
+  )
+
+  data.frame(
+    query = query,
+    target = target,
+    n_query_eligible = nrow(query_qtls),
+    expected_chance_matches = sum(probability),
+    chance_rediscovery = mean(probability),
+    stringsAsFactors = FALSE
+  )
+}
+
+chromosome_lengths = make_chr_lengths(chrFeatures)
+
+message("Calculating Figure 3 chance-overlap null...")
+
+chance_overlap_null = do.call(
+  rbind,
+  lapply(
+    seq_len(nrow(observed_pairwise)),
+    function(i) {
+
+      obs = observed_pairwise[
+        i,
+        ,
+        drop = FALSE
+      ]
+
+      null = chance_overlap_pair(
+        query = obs$query[[1]],
+        target = obs$target[[1]],
+        chromosome_lengths = chromosome_lengths,
+        pad = 10000L
+      )
+
+      if (
+        null$n_query_eligible !=
+        obs$n_query_eligible
+      ) {
+        stop(
+          "Chance-null denominator mismatch for ",
+          obs$query[[1]],
+          " -> ",
+          obs$target[[1]]
+        )
+      }
+
+      null$n_matches = obs$n_matches
+      null$observed_rediscovery = obs$observed_rediscovery
+      null$comparison = obs$comparison
+      null
+    }
+  )
+)
+
+chance_overlap_summary = chance_overlap_null %>%
+  dplyr::group_by(comparison) %>%
+  dplyr::summarise(
+    n_pairs = dplyr::n(),
+    total_query_qtl = sum(n_query_eligible),
+    observed_matches = sum(n_matches),
+    expected_chance_matches = sum(expected_chance_matches),
+    mean_observed = mean(observed_rediscovery),
+    mean_chance = mean(chance_rediscovery),
+    pooled_observed = observed_matches / total_query_qtl,
+    pooled_chance = expected_chance_matches / total_query_qtl,
+    .groups = "drop"
+  )
+
+chance_null_definition = data.frame(
+  item = c(
+    "null_model",
+    "fixed_query_information",
+    "randomized_quantity",
+    "preserved_target_information",
+    "overlap_definition"
+  ),
+  value = c(
+    "independent target-QTL position randomization within chromosome",
+    "Figure 3-eligible query QTLs after target-gene and technical-marker exclusions",
+    "target-QTL genomic position",
+    "gene, chromosome, effect direction, confidence-interval width, and QTL count",
+    "same gene, chromosome, effect direction, and overlapping confidence intervals after 10-kb padding of both intervals"
+  ),
+  stringsAsFactors = FALSE
+)
+
+########################
+# CALIBRATION SUMMARY  #
+########################
 
 simulation_calibration = data.frame(
   item = c(
     "analysis_universe",
     "covariate_handling",
     "effect_reference",
-    "effect_sampling",
-    "effect_scale_sensitivity",
+    "effect_weighting",
+    "effect_size_sweep",
+    "power_curve_grid",
     "threshold_reference",
     "threshold_sensitivity",
+    "shared_effect_definition",
+    "shared_effect_aggregation",
+    "localization_scope",
+    "heterogeneity_scope",
     "observed_pairwise_definition",
     "observed_pairwise_scope"
   ),
@@ -1867,10 +1591,11 @@ simulation_calibration = data.frame(
       reference_study,
       " individually remapped QTL effects"
     ),
-    "empirical resampling of absolute observed r values with replacement; no observed locus identity is reused as simulated truth",
-    paste(effect_scales, collapse = ","),
+    "each finite 0 < abs(r) < 1 Albert_2018 mapped QTL enters once with equal empirical weight; no resampling or parametric fit",
+    "none; the former 0.20-1.00 global scaling sweep was removed",
+    "rho 0-0.95 by 0.005 for visualization of P(detection | rho,n,L) only; grid values are not averaged as an effect distribution",
     paste0(
-      "median historical 5% FDR LOD calibration = ",
+      "pooled median historical 5% FDR LOD calibration = ",
       signif(lod_reference, 6)
     ),
     paste(
@@ -1881,6 +1606,10 @@ simulation_calibration = data.frame(
       ),
       collapse = ";"
     ),
+    "the same population correlation rho_j is supplied to query and target for every empirical effect j",
+    "same-row joint detection probabilities are summed over empirical effects and divided by the summed query detection probabilities; no r_j by r_k effect-size crossing",
+    "expected rediscovery models threshold crossing and sign, not same-locus peak-localization error; observed Figure 3 additionally requires overlapping confidence intervals",
+    "no arbitrary attenuation/null/opposite-effect mixture is fit in the primary power analysis; biological/environmental heterogeneity remains a stated limitation",
     "Frank Figure 3 overlapsWithStrand logic: CI_chr plus gene_ID defines the locus, both confidence intervals are padded 10 kb, and effect sign defines strand",
     "individual-only Figure 3 calibration uses Frank qtls_list_260204, target-gene measurability, and pair-specific LEU2/MAT/URA3/AMN1/KRE33 exclusions"
   ),
@@ -1911,16 +1640,24 @@ write_table(
   "empirical_thresholds_all.tsv"
 )
 write_table(
-  effect_fit,
-  "effect_distribution_fit.tsv"
+  effect_reference,
+  "effect_distribution_reference.tsv"
 )
 write_table(
-  fit_quantiles,
+  effect_quantiles,
   "effect_distribution_quantiles.tsv"
+)
+write_table(
+  data.frame(abs_r = reference_abs_r),
+  "effect_distribution_values.tsv"
 )
 write_table(
   simulation_calibration,
   "simulation_calibration.tsv"
+)
+write_table(
+  frank_qtl_count_check,
+  "frank_qtl_count_check.tsv"
 )
 write_table(
   observed_pairwise,
@@ -1930,22 +1667,17 @@ write_table(
   observed_summary,
   "observed_individual_rediscovery_summary.tsv"
 )
-
-write_table(
-  observed_glmm_summary,
-  "observed_individual_rediscovery_glmm.tsv"
-)
 write_table(
   power_curves,
   "study_power_curves.tsv"
 )
 write_table(
-  threshold_sensitivity,
-  "power_threshold_sensitivity.tsv"
-)
-write_table(
   validation,
   "analytic_power_validation.tsv"
+)
+write_table(
+  query_ascertainment,
+  "query_ascertainment_effect_summary.tsv"
 )
 write_table(
   shared_rediscovery,
@@ -1968,14 +1700,6 @@ write_table(
   "observed_vs_expected_by_comparison.tsv"
 )
 write_table(
-  heterogeneity_rediscovery,
-  "heterogeneity_sensitivity.tsv"
-)
-write_table(
-  heterogeneity_summary,
-  "heterogeneity_sensitivity_summary.tsv"
-)
-write_table(
   threshold_pairwise,
   "pairwise_threshold_sensitivity.tsv"
 )
@@ -1987,42 +1711,57 @@ write_table(
   observed_threshold_sensitivity_summary,
   "observed_threshold_sensitivity_summary.tsv"
 )
+write_table(
+  chance_overlap_null,
+  "chance_overlap_null.tsv"
+)
+write_table(
+  chance_overlap_summary,
+  "chance_overlap_null_summary.tsv"
+)
+write_table(
+  chance_null_definition,
+  "chance_overlap_null_definition.tsv"
+)
 
 review_power = list(
   settings = list(
-    seed = seed,
-    n_synthetic = n_synthetic,
+    validation_seed = validation_seed,
     n_validation = n_validation,
     reference_study = reference_study,
     reference_lod = lod_reference,
-    effect_sampling = "empirical_resampling_absolute_r",
-    effect_scales = effect_scales,
-    heterogeneity_fractions = heterogeneity_fractions
+    effect_reference = "direct_empirical_absolute_r",
+    effect_size_sweep = "none",
+    threshold_sensitivity = stats::setNames(
+      threshold_sensitivity_lod,
+      threshold_sensitivity_label
+    )
   ),
   study_design = study_design,
   empirical_thresholds = empirical_thresholds,
   threshold_summary = threshold_summary,
-  effect_fit = effect_fit,
-  effect_fit_quantiles = fit_quantiles,
+  effect_reference = effect_reference,
+  effect_quantiles = effect_quantiles,
   simulation_calibration = simulation_calibration,
   observed_pairwise = observed_pairwise,
   observed_summary = observed_summary,
-  observed_glmm_summary = observed_glmm_summary,
   power_curves = power_curves,
   validation = validation,
+  query_ascertainment = query_ascertainment,
   shared_rediscovery = shared_rediscovery,
   shared_summary = shared_summary,
   observed_vs_expected = observed_vs_expected,
   observed_vs_expected_summary = observed_vs_expected_summary,
   observed_vs_expected_by_comparison =
     observed_vs_expected_by_comparison,
-  heterogeneity_rediscovery = heterogeneity_rediscovery,
-  heterogeneity_summary = heterogeneity_summary,
   threshold_pairwise = threshold_pairwise,
   observed_threshold_sensitivity =
     observed_threshold_sensitivity,
   observed_threshold_sensitivity_summary =
-    observed_threshold_sensitivity_summary
+    observed_threshold_sensitivity_summary,
+  chance_overlap_null = chance_overlap_null,
+  chance_overlap_summary = chance_overlap_summary,
+  chance_null_definition = chance_null_definition
 )
 
 saveRDS(
@@ -2034,27 +1773,9 @@ saveRDS(
 # DIAGNOSTIC FIGURES   #
 ########################
 
-effect_plot_data = rbind(
-  data.frame(
-    abs_r = reference_abs_r,
-    source = "Observed Albert 2018 QTLs",
-    stringsAsFactors = FALSE
-  ),
-  data.frame(
-    abs_r = synthetic_abs_r[
-      seq_len(min(length(synthetic_abs_r), 100000L))
-    ],
-    source = "Empirically resampled effects",
-    stringsAsFactors = FALSE
-  )
-)
-
 effect_plot = ggplot2::ggplot(
-  effect_plot_data,
-  ggplot2::aes(
-    x = abs_r,
-    linetype = source
-  )
+  data.frame(abs_r = reference_abs_r),
+  ggplot2::aes(x = abs_r)
 ) +
   ggplot2::geom_density(linewidth = 0.8) +
   ggplot2::coord_cartesian(
@@ -2064,9 +1785,8 @@ effect_plot = ggplot2::ggplot(
     )
   ) +
   ggplot2::labs(
-    x = "Absolute standardized QTL effect (|r|)",
-    y = "Density",
-    linetype = NULL
+    x = "Absolute Albert 2018 QTL effect (|r|)",
+    y = "Density"
   ) +
   ggplot2::theme_bw()
 
@@ -2085,14 +1805,13 @@ power_plot = ggplot2::ggplot(
   ) +
   ggplot2::facet_wrap(~ study) +
   ggplot2::labs(
-    x = "True standardized QTL effect (|r|)",
+    x = "True standardized QTL effect (|rho|)",
     y = "Probability of QTL detection",
     linetype = "Gene product"
   ) +
   ggplot2::theme_bw()
 
-shared_heatmap_data = shared_rediscovery %>%
-  dplyr::filter(effect_scale == 1)
+shared_heatmap_data = shared_rediscovery
 shared_heatmap_data$query = factor(
   shared_heatmap_data$query,
   levels = rev(study_design$study)
@@ -2107,16 +1826,13 @@ shared_heatmap = ggplot2::ggplot(
   ggplot2::aes(
     x = target,
     y = query,
-    fill = rediscovery_same_direction
+    fill = expected_rediscovery
   )
 ) +
   ggplot2::geom_tile() +
   ggplot2::geom_text(
     ggplot2::aes(
-      label = sprintf(
-        "%.2f",
-        rediscovery_same_direction
-      )
+      label = sprintf("%.2f", expected_rediscovery)
     ),
     size = 2.5
   ) +
@@ -2198,37 +1914,14 @@ observed_expected_plot = ggplot2::ggplot(
     alpha = 0.75,
     size = 2
   ) +
-  ggplot2::facet_wrap(
-    ~ effect_scale,
-    labeller = ggplot2::label_both
-  ) +
   ggplot2::coord_equal(
     xlim = c(0, 1),
     ylim = c(0, 1)
   ) +
   ggplot2::labs(
-    x = "Expected rediscovery under shared effects",
-    y = "Observed individual-study rediscovery",
+    x = "Expected rediscovery under identical shared effects",
+    y = "Observed Figure 3 rediscovery",
     shape = "Comparison"
-  ) +
-  ggplot2::theme_bw()
-
-heterogeneity_plot = ggplot2::ggplot(
-  heterogeneity_summary,
-  ggplot2::aes(
-    x = heterogeneity_fraction,
-    y = mean_rediscovery,
-    linetype = comparison,
-    group = comparison
-  )
-) +
-  ggplot2::geom_line() +
-  ggplot2::geom_point() +
-  ggplot2::facet_wrap(~ heterogeneity_mode) +
-  ggplot2::labs(
-    x = "Fraction of true QTLs altered in target dataset",
-    y = "Mean expected query-to-target rediscovery",
-    linetype = "Comparison"
   ) +
   ggplot2::theme_bw()
 
@@ -2250,7 +1943,7 @@ save_plot = function(plot, stem, width, height) {
 
 save_plot(
   effect_plot,
-  "effect_distribution_fit",
+  "effect_distribution_reference",
   6,
   4
 )
@@ -2275,14 +1968,8 @@ save_plot(
 save_plot(
   observed_expected_plot,
   "observed_vs_expected",
-  10,
-  8
-)
-save_plot(
-  heterogeneity_plot,
-  "heterogeneity_sensitivity",
-  10,
-  5
+  6,
+  6
 )
 
 ########################
@@ -2290,17 +1977,20 @@ save_plot(
 ########################
 
 message("")
-message("Reviewer power simulation complete.")
+message("Reviewer power analysis complete.")
 message(
   "Individual datasets analyzed: ",
   nrow(study_design)
 )
 message(
-  "Reference effect distribution: empirical resampling of ",
+  "Reference effect distribution: direct empirical ",
   reference_study,
-  " (",
+  " QTL effects (",
   format(length(reference_abs_r), big.mark = ","),
   " mapped QTLs)"
+)
+message(
+  "Effect-size scaling sweep: none"
 )
 message(
   "Observed individual-study pairs: ",
@@ -2313,1023 +2003,4 @@ message(
 message(
   "Outputs: ",
   power_asys
-)
-
-
-########################################
-########################################
-# FINAL PAIRWISE REVIEW POLISH         #
-########################################
-########################################
-
-canonicalize_review_seg = function(x) {
-
-  x = trimws(
-    as.character(x)
-  )
-
-  x = gsub(
-    "_",
-    ".",
-    x,
-    fixed = TRUE
-  )
-
-  gsub(
-    "\\s+",
-    "",
-    x
-  )
-}
-
-
-########################################
-# SHARED-SEGREGANT PANEL AUDIT         #
-########################################
-
-build_panel_overlap = function(
-  study_names,
-  studies
-) {
-
-  pair_grid = expand.grid(
-    query = study_names,
-    target = study_names,
-    stringsAsFactors = FALSE
-  )
-
-  pair_grid = pair_grid[
-    pair_grid$query !=
-    pair_grid$target,
-    ,
-    drop = FALSE
-  ]
-
-  do.call(
-    rbind,
-    lapply(
-      seq_len(
-        nrow(
-          pair_grid
-        )
-      ),
-      function(i) {
-
-        query =
-          pair_grid$query[[i]]
-
-        target =
-          pair_grid$target[[i]]
-
-        query_ids =
-          unique(
-            canonicalize_review_seg(
-              rownames(
-                studies[[query]]$pheno
-              )
-            )
-          )
-
-        target_ids =
-          unique(
-            canonicalize_review_seg(
-              rownames(
-                studies[[target]]$pheno
-              )
-            )
-          )
-
-        shared =
-          intersect(
-            query_ids,
-            target_ids
-          )
-
-        n_query =
-          length(
-            query_ids
-          )
-
-        n_target =
-          length(
-            target_ids
-          )
-
-        n_shared =
-          length(
-            shared
-          )
-
-        data.frame(
-          query = query,
-          target = target,
-          n_query =
-            n_query,
-          n_target =
-            n_target,
-          n_shared =
-            n_shared,
-          fraction_query_shared =
-            n_shared /
-            n_query,
-          fraction_target_shared =
-            n_shared /
-            n_target,
-          fraction_smaller_panel_shared =
-            n_shared /
-            min(
-              n_query,
-              n_target
-            ),
-          jaccard =
-            n_shared /
-            length(
-              union(
-                query_ids,
-                target_ids
-              )
-            ),
-          major_shared_panel =
-            n_shared >= 10L &
-            n_shared /
-            min(
-              n_query,
-              n_target
-            ) >= 0.50,
-          stringsAsFactors = FALSE
-        )
-      }
-    )
-  )
-}
-
-
-build_reuse_summary = function(
-  study_names,
-  studies,
-  metadata
-) {
-
-  dat =
-    do.call(
-      rbind,
-      lapply(
-        study_names,
-        function(study) {
-
-          idx =
-            match(
-              study,
-              metadata$study
-            )
-
-          data.frame(
-            segregant =
-              canonicalize_review_seg(
-                rownames(
-                  studies[[study]]$pheno
-                )
-              ),
-            study = study,
-            analyte =
-              metadata$analyte[[idx]],
-            stringsAsFactors = FALSE
-          )
-        }
-      )
-    )
-
-  reuse =
-    dat %>%
-    dplyr::group_by(
-      segregant
-    ) %>%
-    dplyr::summarise(
-      n_studies =
-        dplyr::n_distinct(
-          study
-        ),
-      n_analytes =
-        dplyr::n_distinct(
-          analyte
-        ),
-      studies =
-        paste(
-          sort(
-            unique(
-              study
-            )
-          ),
-          collapse = ";"
-        ),
-      .groups = "drop"
-    )
-
-  summary =
-    data.frame(
-      total_study_rows =
-        nrow(dat),
-      unique_segregants =
-        dplyr::n_distinct(
-          dat$segregant
-        ),
-      reused_segregants =
-        sum(
-          reuse$n_studies > 1L
-        ),
-      fraction_unique_reused =
-        mean(
-          reuse$n_studies > 1L
-        ),
-      maximum_studies_per_segregant =
-        max(
-          reuse$n_studies
-        ),
-      stringsAsFactors = FALSE
-    )
-
-  list(
-    reuse = reuse,
-    summary = summary
-  )
-}
-
-
-individual_panel_overlap =
-  build_panel_overlap(
-    study_names =
-      study_design$study,
-    studies =
-      studies
-  )
-
-joint_study_names =
-  intersect(
-    scaMetadata$study,
-    names(
-      studies
-    )
-  )
-
-joint_panel_overlap =
-  build_panel_overlap(
-    study_names =
-      joint_study_names,
-    studies =
-      studies
-  )
-
-joint_reuse =
-  build_reuse_summary(
-    study_names =
-      joint_study_names,
-    studies =
-      studies,
-    metadata =
-      scaMetadata
-  )
-
-
-########################################
-# FIGURE 3 SHARED-PANEL SENSITIVITY    #
-########################################
-
-observed_panel =
-  dplyr::left_join(
-    observed_pairwise,
-    individual_panel_overlap,
-    by = c(
-      "query",
-      "target"
-    )
-  )
-
-panel_scenarios =
-  list(
-    all_pairs =
-      rep(
-        TRUE,
-        nrow(
-          observed_panel
-        )
-      ),
-    exclude_major_shared_panels =
-      !observed_panel$major_shared_panel
-  )
-
-panel_sensitivity_raw =
-  do.call(
-    rbind,
-    lapply(
-      names(
-        panel_scenarios
-      ),
-      function(scenario) {
-
-        dat =
-          observed_panel[
-            panel_scenarios[[scenario]],
-            ,
-            drop = FALSE
-          ]
-
-        dat %>%
-          dplyr::group_by(
-            comparison
-          ) %>%
-          dplyr::summarise(
-            scenario =
-              scenario,
-            n_pairs =
-              dplyr::n(),
-            total_query_qtl =
-              sum(
-                n_query_eligible
-              ),
-            total_matches =
-              sum(
-                n_matches
-              ),
-            mean_rediscovery =
-              mean(
-                observed_rediscovery
-              ),
-            pooled_rediscovery =
-              total_matches /
-              total_query_qtl,
-            .groups = "drop"
-          )
-      }
-    )
-  )
-
-panel_sensitivity_glmm =
-  do.call(
-    rbind,
-    lapply(
-      names(
-        panel_scenarios
-      ),
-      function(scenario) {
-
-        dat =
-          observed_panel[
-            panel_scenarios[[scenario]],
-            ,
-            drop = FALSE
-          ]
-
-        fit =
-          tryCatch(
-            fit_observed_overlap_glmm(
-              dat
-            ),
-            error = function(e) {
-              NULL
-            }
-          )
-
-        if (is.null(fit)) {
-
-          return(
-            data.frame(
-              comparison =
-                NA_character_,
-              estimate_logit =
-                NA_real_,
-              se_logit =
-                NA_real_,
-              adjusted_agreement =
-                NA_real_,
-              adjusted_lower_95 =
-                NA_real_,
-              adjusted_upper_95 =
-                NA_real_,
-              singular_fit =
-                NA,
-              n_pairs =
-                nrow(dat),
-              scenario =
-                scenario,
-              stringsAsFactors = FALSE
-            )
-          )
-        }
-
-        fit$scenario =
-          scenario
-
-        fit
-      }
-    )
-  )
-
-
-########################################
-# ANALYTIC FIGURE 3 CHANCE NULL        #
-########################################
-
-make_chr_lengths = function(
-  chr_features
-) {
-
-  chr =
-    normalize_yeast_chr(
-      chr_features$Chromosome
-    )
-
-  left =
-    suppressWarnings(
-      as.numeric(
-        chr_features$Start_Coordinate
-      )
-    )
-
-  right =
-    suppressWarnings(
-      as.numeric(
-        chr_features$Stop_Coordinate
-      )
-    )
-
-  endpoint =
-    pmax(
-      left,
-      right,
-      na.rm = TRUE
-    )
-
-  keep =
-    chr %in%
-    as.character(1:16) &
-    is.finite(endpoint)
-
-  lengths =
-    tapply(
-      endpoint[keep],
-      chr[keep],
-      max,
-      na.rm = TRUE
-    )
-
-  lengths =
-    lengths[
-      as.character(1:16)
-    ]
-
-  if (
-    length(lengths) != 16L ||
-    any(!is.finite(lengths))
-  ) {
-    stop(
-      "Could not determine all chromosome lengths."
-    )
-  }
-
-  lengths
-}
-
-
-prepare_frank_query_for_null = function(
-  query,
-  target,
-  pad = 10000L
-) {
-
-  target_genes =
-    colnames(
-      studies[[target]]$pheno
-    )
-
-  qtls =
-    frank_individual_qtls[[
-      query
-    ]]
-
-  qtls =
-    qtls[
-      qtls$gene_ID %in%
-      target_genes,
-      ,
-      drop = FALSE
-    ]
-
-  tech =
-    frank_technical_markers()
-
-  exclude =
-    setdiff(
-      tech[[query]],
-      tech[[target]]
-    )
-
-  if (
-    nrow(qtls) > 0L &&
-    length(exclude) > 0L
-  ) {
-
-    left =
-      pmin(
-        as.numeric(
-          qtls$CI_min_base
-        ),
-        as.numeric(
-          qtls$CI_max_base
-        )
-      )
-
-    right =
-      pmax(
-        as.numeric(
-          qtls$CI_min_base
-        ),
-        as.numeric(
-          qtls$CI_max_base
-        )
-      )
-
-    gr =
-      GenomicRanges::GRanges(
-        seqnames =
-          normalize_yeast_chr(
-            qtls$CI_chr
-          ),
-        ranges =
-          IRanges::IRanges(
-            start =
-              pmax(
-                1,
-                left -
-                as.integer(pad)
-              ),
-            end =
-              right +
-              as.integer(pad)
-          )
-      )
-
-    hit =
-      suppressWarnings(
-        GenomicRanges::countOverlaps(
-          gr,
-          technical_marker_ranges[
-            exclude
-          ],
-          ignore.strand = TRUE
-        )
-      ) > 0L
-
-    qtls =
-      qtls[
-        !hit,
-        ,
-        drop = FALSE
-      ]
-  }
-
-  qtls
-}
-
-
-chance_overlap_pair = function(
-  query,
-  target,
-  chromosome_lengths,
-  pad = 10000L
-) {
-
-  query_qtls =
-    prepare_frank_query_for_null(
-      query = query,
-      target = target,
-      pad = pad
-    )
-
-  target_qtls =
-    frank_individual_qtls[[
-      target
-    ]]
-
-  if (
-    nrow(query_qtls) == 0L
-  ) {
-    return(
-      data.frame(
-        query = query,
-        target = target,
-        n_query_eligible = 0L,
-        expected_chance_matches = 0,
-        chance_rediscovery = NA_real_,
-        stringsAsFactors = FALSE
-      )
-    )
-  }
-
-  q_chr =
-    normalize_yeast_chr(
-      query_qtls$CI_chr
-    )
-
-  t_chr =
-    normalize_yeast_chr(
-      target_qtls$CI_chr
-    )
-
-  q_key =
-    paste(
-      q_chr,
-      query_qtls$gene_ID,
-      sign(
-        query_qtls$cor_coef
-      ),
-      sep = "::"
-    )
-
-  t_key =
-    paste(
-      t_chr,
-      target_qtls$gene_ID,
-      sign(
-        target_qtls$cor_coef
-      ),
-      sep = "::"
-    )
-
-  target_groups =
-    split(
-      seq_len(
-        nrow(
-          target_qtls
-        )
-      ),
-      t_key
-    )
-
-  q_left =
-    pmin(
-      as.numeric(
-        query_qtls$CI_min_base
-      ),
-      as.numeric(
-        query_qtls$CI_max_base
-      )
-    )
-
-  q_right =
-    pmax(
-      as.numeric(
-        query_qtls$CI_min_base
-      ),
-      as.numeric(
-        query_qtls$CI_max_base
-      )
-    )
-
-  t_left =
-    pmin(
-      as.numeric(
-        target_qtls$CI_min_base
-      ),
-      as.numeric(
-        target_qtls$CI_max_base
-      )
-    )
-
-  t_right =
-    pmax(
-      as.numeric(
-        target_qtls$CI_min_base
-      ),
-      as.numeric(
-        target_qtls$CI_max_base
-      )
-    )
-
-  target_width =
-    t_right -
-    t_left
-
-  probability =
-    vapply(
-      seq_len(
-        nrow(
-          query_qtls
-        )
-      ),
-      function(i) {
-
-        idx =
-          target_groups[[
-            q_key[[i]]
-          ]]
-
-        if (
-          is.null(idx) ||
-          length(idx) == 0L
-        ) {
-          return(0)
-        }
-
-        chr_length =
-          unname(
-            chromosome_lengths[
-              q_chr[[i]]
-            ]
-          )
-
-        widths =
-          target_width[idx]
-
-        n_starts =
-          floor(
-            chr_length -
-            widths +
-            1
-          )
-
-        valid =
-          is.finite(n_starts) &
-          n_starts >= 1
-
-        if (!any(valid)) {
-          return(0)
-        }
-
-        widths =
-          widths[valid]
-
-        n_starts =
-          n_starts[valid]
-
-        # Both query and target are padded 10 kb.
-        lower =
-          q_left[[i]] -
-          widths -
-          2 * as.integer(pad)
-
-        upper =
-          q_right[[i]] +
-          2 * as.integer(pad)
-
-        allowed_low =
-          pmax(
-            1,
-            ceiling(lower)
-          )
-
-        allowed_high =
-          pmin(
-            n_starts,
-            floor(upper)
-          )
-
-        n_allowed =
-          pmax(
-            0,
-            allowed_high -
-            allowed_low +
-            1
-          )
-
-        p_each =
-          pmin(
-            1,
-            n_allowed /
-            n_starts
-          )
-
-        1 -
-          prod(
-            1 -
-            p_each
-          )
-      },
-      numeric(1)
-    )
-
-  data.frame(
-    query = query,
-    target = target,
-    n_query_eligible =
-      nrow(
-        query_qtls
-      ),
-    expected_chance_matches =
-      sum(
-        probability
-      ),
-    chance_rediscovery =
-      mean(
-        probability
-      ),
-    stringsAsFactors = FALSE
-  )
-}
-
-
-chromosome_lengths =
-  make_chr_lengths(
-    chrFeatures
-  )
-
-message(
-  "Calculating Figure 3 chance-overlap null..."
-)
-
-chance_overlap_null =
-  do.call(
-    rbind,
-    lapply(
-      seq_len(
-        nrow(
-          observed_pairwise
-        )
-      ),
-      function(i) {
-
-        obs =
-          observed_pairwise[
-            i,
-            ,
-            drop = FALSE
-          ]
-
-        null =
-          chance_overlap_pair(
-            query =
-              obs$query[[1]],
-            target =
-              obs$target[[1]],
-            chromosome_lengths =
-              chromosome_lengths,
-            pad = 10000L
-          )
-
-        if (
-          null$n_query_eligible !=
-          obs$n_query_eligible
-        ) {
-          stop(
-            "Chance-null denominator mismatch for ",
-            obs$query[[1]],
-            " -> ",
-            obs$target[[1]]
-          )
-        }
-
-        null$n_matches =
-          obs$n_matches
-
-        null$observed_rediscovery =
-          obs$observed_rediscovery
-
-        null$comparison =
-          obs$comparison
-
-        null
-      }
-    )
-  )
-
-chance_null_definition =
-  data.frame(
-    item = c(
-      "null_model",
-      "fixed_query_information",
-      "randomized_quantity",
-      "preserved_target_information",
-      "overlap_definition"
-    ),
-    value = c(
-      "independent target-QTL position randomization within chromosome",
-      "Figure 3-eligible query QTLs after target-gene and technical-marker exclusions",
-      "target-QTL genomic position",
-      "gene, chromosome, effect direction, confidence-interval width, and QTL count",
-      "same gene, chromosome, effect direction, and overlapping confidence intervals after 10-kb padding of both intervals"
-    ),
-    stringsAsFactors = FALSE
-  )
-
-chance_overlap_summary =
-  chance_overlap_null %>%
-  dplyr::group_by(
-    comparison
-  ) %>%
-  dplyr::summarise(
-    n_pairs =
-      dplyr::n(),
-    total_query_qtl =
-      sum(
-        n_query_eligible
-      ),
-    observed_matches =
-      sum(
-        n_matches
-      ),
-    expected_chance_matches =
-      sum(
-        expected_chance_matches
-      ),
-    mean_observed =
-      mean(
-        observed_rediscovery
-      ),
-    mean_chance =
-      mean(
-        chance_rediscovery
-      ),
-    pooled_observed =
-      observed_matches /
-      total_query_qtl,
-    pooled_chance =
-      expected_chance_matches /
-      total_query_qtl,
-    .groups = "drop"
-  )
-
-
-########################################
-# SAVE POLISH OUTPUTS                  #
-########################################
-
-write_table(
-  individual_panel_overlap,
-  "segregant_overlap_individual_studies.tsv"
-)
-
-write_table(
-  joint_panel_overlap,
-  "segregant_overlap_joint_sc_studies.tsv"
-)
-
-write_table(
-  joint_reuse$reuse,
-  "segregant_reuse_joint_sc.tsv"
-)
-
-write_table(
-  joint_reuse$summary,
-  "segregant_reuse_joint_sc_summary.tsv"
-)
-
-write_table(
-  panel_sensitivity_raw,
-  "pairwise_shared_panel_sensitivity_raw.tsv"
-)
-
-write_table(
-  panel_sensitivity_glmm,
-  "pairwise_shared_panel_sensitivity_glmm.tsv"
-)
-
-write_table(
-  chance_overlap_null,
-  "chance_overlap_null.tsv"
-)
-
-write_table(
-  chance_overlap_summary,
-  "chance_overlap_null_summary.tsv"
-)
-
-write_table(
-  chance_null_definition,
-  "chance_overlap_null_definition.tsv"
-)
-
-review_power$individual_panel_overlap =
-  individual_panel_overlap
-
-review_power$joint_panel_overlap =
-  joint_panel_overlap
-
-review_power$joint_reuse =
-  joint_reuse
-
-review_power$panel_sensitivity_raw =
-  panel_sensitivity_raw
-
-review_power$panel_sensitivity_glmm =
-  panel_sensitivity_glmm
-
-review_power$chance_overlap_null =
-  chance_overlap_null
-
-review_power$chance_overlap_summary =
-  chance_overlap_summary
-
-
-review_power$chance_null_definition =
-  chance_null_definition
-
-saveRDS(
-  review_power,
-  paste0(
-    power_imed,
-    "review_power.rds"
-  )
-)
-
-message(
-  "Final pairwise reviewer polish complete."
 )
