@@ -45,6 +45,11 @@ if (is.na(n_validation) || n_validation < 1000L) {
   stop("REVIEW_POWER_NVALID must be at least 1000.")
 }
 
+power_cores = suppressWarnings(
+  as.integer(Sys.getenv("REVIEW_POWER_CORES", "1"))
+)
+if (is.na(power_cores) || power_cores < 1L) power_cores = 1L
+
 ####################
 # HELPER FUNCTIONS #
 ####################
@@ -133,6 +138,22 @@ is_nondecreasing = function(x, tolerance = 1e-12) {
 is_nonincreasing = function(x, tolerance = 1e-12) {
   if (length(x) <= 1L) return(TRUE)
   all(diff(x) <= tolerance)
+}
+
+parallel_lapply = function(X, FUN) {
+  if (
+    .Platform$OS.type == "unix" &&
+    power_cores > 1L &&
+    length(X) > 1L
+  ) {
+    return(parallel::mclapply(
+      X,
+      FUN,
+      mc.cores = min(power_cores, length(X)),
+      mc.preschedule = TRUE
+    ))
+  }
+  lapply(X, FUN)
 }
 
 validate_direct_simulation = function(
@@ -433,28 +454,77 @@ checks[[check_i]] = add_check(
 )
 check_i = check_i + 1L
 
+engine_grid_pve = seq(0.005, 0.10, by = 0.001)
+engine_public = vapply(
+  engine_grid_pve,
+  function(pve) {
+    delta = 2 * sqrt(pve / (1 - pve))
+    stats::power.t.test(
+      n = ab_n_per_group,
+      delta = delta,
+      sd = 1,
+      sig.level = ab_alpha,
+      type = "two.sample",
+      alternative = "two.sided"
+    )$power
+  },
+  numeric(1)
+)
+engine_current = vapply(
+  sqrt(engine_grid_pve),
+  function(rho) {
+    independent_probability(
+      rho = rho,
+      n = ab_total_n,
+      lod = ab_lod
+    )[["any"]]
+  },
+  numeric(1)
+)
+engine_diff = engine_current - engine_public
+engine_summary_error = max(
+  abs(benchmark$engine_grid_pve_min - min(engine_grid_pve)),
+  abs(benchmark$engine_grid_pve_max - max(engine_grid_pve)),
+  abs(benchmark$engine_grid_pve_step - unique(diff(engine_grid_pve))[[1]]),
+  abs(benchmark$engine_grid_n - length(engine_grid_pve)),
+  abs(benchmark$engine_grid_max_abs_difference - max(abs(engine_diff))),
+  abs(benchmark$engine_grid_mean_abs_difference - mean(abs(engine_diff))),
+  abs(benchmark$engine_grid_rmse - sqrt(mean(engine_diff ^ 2)))
+)
+checks[[check_i]] = add_check(
+  "albert_2018_engines_agree_across_effect_grid",
+  engine_summary_error < 1e-12 && max(abs(engine_diff)) < 0.01,
+  paste(
+    "PVE grid = 0.005 to 0.10; maximum absolute difference =",
+    signif(max(abs(engine_diff)), 7),
+    "; table-summary error =", signif(engine_summary_error, 7)
+  )
+)
+check_i = check_i + 1L
+
 ########################################
 # ALBERT CROSS-STUDY TABLE             #
 ########################################
 
 expected_targets = setdiff(expected_studies, "Albert_2018")
-expected_scales = c(0.6, 0.8, 1.0)
-expected_cross_rows =
-  length(expected_targets) * length(expected_scales) * length(expected_lod)
+expected_cross_columns = c(
+  "expected_detection_lod2",
+  "expected_detection_lod3_03",
+  "expected_detection_lod4_5",
+  "expected_detection_lod7",
+  "expected_detection_lod4_5_scale0_8",
+  "expected_detection_lod4_5_scale0_6",
+  "expected_same_direction_lod4_5"
+)
 
 checks[[check_i]] = add_check(
-  "crossstudy_table_has_exact_target_scale_lod_grid",
-  nrow(crossstudy) == expected_cross_rows &&
-    setequal(unique(crossstudy$target), expected_targets) &&
-    setequal(unique(crossstudy$effect_scale), expected_scales) &&
-    isTRUE(all.equal(
-      sort(unique(crossstudy$lod)),
-      sort(expected_lod),
-      tolerance = 1e-14
-    )),
+  "crossstudy_table_is_compact_one_row_per_target",
+  nrow(crossstudy) == length(expected_targets) &&
+    setequal(crossstudy$target, expected_targets) &&
+    all(expected_cross_columns %in% colnames(crossstudy)),
   paste(
     "rows =", nrow(crossstudy),
-    "; expected =", expected_cross_rows
+    "; targets =", length(unique(crossstudy$target))
   )
 )
 check_i = check_i + 1L
@@ -474,104 +544,97 @@ if (is.null(albert)) {
 }
 albert_abs_r = abs(albert$cor_coef)
 
-reference_summary_error = numeric(0)
-expected_detection_error = numeric(0)
+cross_recomputed = parallel_lapply(
+  expected_targets,
+  function(target) {
+    target_genes = colnames(studies[[target]]$pheno)
+    keep = albert$gene_ID %in% target_genes
+    ref_r = albert_abs_r[keep]
+    row = crossstudy[crossstudy$target == target, , drop = FALSE]
+    if (nrow(row) != 1L) stop("Expected one compact row for ", target)
 
-for (target in expected_targets) {
+    configs = data.frame(
+      effect_scale = c(1, 1, 1, 1, 0.8, 0.6, 1),
+      lod = c(2, 3.03, 4.5, 7, 4.5, 4.5, 4.5),
+      direction = c("any", "any", "any", "any", "any", "any", "same"),
+      output_col = expected_cross_columns,
+      stringsAsFactors = FALSE
+    )
 
-  target_genes = colnames(studies[[target]]$pheno)
-  keep = albert$gene_ID %in% target_genes
-  ref_r = albert_abs_r[keep]
-
-  rows = crossstudy[crossstudy$target == target, , drop = FALSE]
-
-  reference_summary_error = c(
-    reference_summary_error,
-    abs(rows$n_albert_qtl_on_measured_genes - length(ref_r)),
-    abs(rows$reference_mean_abs_r - mean(ref_r)),
-    abs(rows$reference_median_abs_r - stats::median(ref_r)),
-    abs(rows$reference_mean_pve - mean(ref_r ^ 2)),
-    abs(rows$reference_median_pve - stats::median(ref_r ^ 2))
-  )
-
-  for (i in seq_len(nrow(rows))) {
-    scaled_r = pmin(0.999, ref_r * rows$effect_scale[[i]])
-    probs = vapply(
-      scaled_r,
-      function(rho) {
-        independent_probability(
-          rho = rho,
-          n = rows$target_n[[i]],
-          lod = rows$lod[[i]]
-        )[["any"]]
+    expected = vapply(
+      seq_len(nrow(configs)),
+      function(i) {
+        scaled_r = pmin(0.999, ref_r * configs$effect_scale[[i]])
+        probs = vapply(
+          scaled_r,
+          function(rho) {
+            independent_probability(
+              rho = rho,
+              n = row$target_n[[1]],
+              lod = configs$lod[[i]]
+            )[[configs$direction[[i]]]]
+          },
+          numeric(1)
+        )
+        mean(probs)
       },
       numeric(1)
     )
-    probs_same = vapply(
-      scaled_r,
-      function(rho) {
-        independent_probability(
-          rho = rho,
-          n = rows$target_n[[i]],
-          lod = rows$lod[[i]]
-        )[["same"]]
-      },
-      numeric(1)
-    )
+    names(expected) = configs$output_col
 
-    expected_detection_error = c(
-      expected_detection_error,
-      abs(rows$expected_any_detection[[i]] - mean(probs)),
-      abs(rows$expected_same_direction_detection[[i]] - mean(probs_same))
+    c(
+      reference_error = max(
+        abs(row$n_albert_qtl_on_measured_genes[[1]] - length(ref_r)),
+        abs(row$reference_mean_abs_r[[1]] - mean(ref_r)),
+        abs(row$reference_median_abs_r[[1]] - stats::median(ref_r)),
+        abs(row$reference_mean_pve[[1]] - mean(ref_r ^ 2)),
+        abs(row$reference_median_pve[[1]] - stats::median(ref_r ^ 2))
+      ),
+      power_error = max(abs(as.numeric(row[1, expected_cross_columns]) - expected))
     )
   }
-}
+)
+cross_recomputed = do.call(rbind, cross_recomputed)
 
 checks[[check_i]] = add_check(
   "crossstudy_reference_and_power_recompute_exactly",
-  max(reference_summary_error) < 1e-12 &&
-    max(expected_detection_error) < 1e-12,
+  max(cross_recomputed[, "reference_error"]) < 1e-12 &&
+    max(cross_recomputed[, "power_error"]) < 1e-12,
   paste(
     "maximum reference-summary error =",
-    signif(max(reference_summary_error), 7),
+    signif(max(cross_recomputed[, "reference_error"]), 7),
     "; maximum power error =",
-    signif(max(expected_detection_error), 7)
+    signif(max(cross_recomputed[, "power_error"]), 7)
   )
 )
 check_i = check_i + 1L
 
-scale_groups = split(
-  crossstudy,
-  paste(crossstudy$target, crossstudy$lod, sep = "|")
+lod_monotone = apply(
+  crossstudy[, c(
+    "expected_detection_lod2",
+    "expected_detection_lod3_03",
+    "expected_detection_lod4_5",
+    "expected_detection_lod7"
+  )],
+  1,
+  is_nonincreasing
 )
-scale_monotone = vapply(
-  scale_groups,
-  function(dat) {
-    dat = dat[order(dat$effect_scale), , drop = FALSE]
-    is_nondecreasing(dat$expected_any_detection)
-  },
-  logical(1)
-)
-
-lod_groups = split(
-  crossstudy,
-  paste(crossstudy$target, crossstudy$effect_scale, sep = "|")
-)
-lod_monotone = vapply(
-  lod_groups,
-  function(dat) {
-    dat = dat[order(dat$lod), , drop = FALSE]
-    is_nonincreasing(dat$expected_any_detection)
-  },
-  logical(1)
+scale_monotone = apply(
+  crossstudy[, c(
+    "expected_detection_lod4_5_scale0_6",
+    "expected_detection_lod4_5_scale0_8",
+    "expected_detection_lod4_5"
+  )],
+  1,
+  is_nondecreasing
 )
 
 checks[[check_i]] = add_check(
   "crossstudy_sensitivities_are_monotone",
-  all(scale_monotone) && all(lod_monotone),
+  all(lod_monotone) && all(scale_monotone),
   paste(
-    "effect-scale sets =", sum(scale_monotone), "/", length(scale_monotone),
-    "; LOD sets =", sum(lod_monotone), "/", length(lod_monotone)
+    "LOD-monotone targets =", sum(lod_monotone), "/", length(lod_monotone),
+    "; scale-monotone targets =", sum(scale_monotone), "/", length(scale_monotone)
   )
 )
 check_i = check_i + 1L
@@ -596,7 +659,7 @@ validation_grid = expand.grid(
 
 simulation = do.call(
   rbind,
-  lapply(
+  parallel_lapply(
     seq_len(nrow(validation_grid)),
     function(i) {
       validate_direct_simulation(
@@ -677,11 +740,13 @@ checks[[check_i]] = add_check(
 )
 check_i = check_i + 1L
 
+assignment_token = paste0("<", "-")
+
 checks[[check_i]] = add_check(
   "review_power_scripts_follow_equals_style",
-  !grepl("<-", analysis_text, fixed = TRUE) &&
-    !grepl("<-", validator_text, fixed = TRUE),
-  "No '<-' assignments detected in primary or validator script."
+  !grepl(assignment_token, analysis_text, fixed = TRUE) &&
+    !grepl(assignment_token, validator_text, fixed = TRUE),
+  "No left-arrow assignments detected in primary or validator script."
 )
 check_i = check_i + 1L
 

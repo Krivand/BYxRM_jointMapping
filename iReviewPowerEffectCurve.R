@@ -41,6 +41,12 @@ unlink(paste0(power_asys, deprecated_outputs), force = TRUE)
 lod_report = c(2, 3.03, 4.5, 7)
 power_targets = c(0.20, 0.50, 0.80)
 albert_scales = c(1.00, 0.80, 0.60)
+engine_grid_pve = seq(0.005, 0.10, by = 0.001)
+
+power_cores = suppressWarnings(
+  as.integer(Sys.getenv("REVIEW_POWER_CORES", "1"))
+)
+if (is.na(power_cores) || power_cores < 1L) power_cores = 1L
 
 message(
   "Reviewer power calibration: LOD values ",
@@ -50,6 +56,7 @@ message(
   "Albert-reference effect scales: ",
   paste(albert_scales, collapse = ", ")
 )
+message("Parallel worker limit: ", power_cores)
 
 ####################
 # HELPER FUNCTIONS #
@@ -148,6 +155,22 @@ correlation_detection_prob = function(rho, n, lod) {
     p_any_detection = p_positive + p_negative,
     stringsAsFactors = FALSE
   )
+}
+
+parallel_lapply = function(X, FUN) {
+  if (
+    .Platform$OS.type == "unix" &&
+    power_cores > 1L &&
+    length(X) > 1L
+  ) {
+    return(parallel::mclapply(
+      X,
+      FUN,
+      mc.cores = min(power_cores, length(X)),
+      mc.preschedule = TRUE
+    ))
+  }
+  lapply(X, FUN)
 }
 
 solve_r_for_power = function(n, lod, target_power) {
@@ -341,7 +364,7 @@ albert_targets = setdiff(study_design$study, "Albert_2018")
 
 albert_reference_crossstudy = do.call(
   rbind,
-  lapply(
+  parallel_lapply(
     albert_targets,
     function(target) {
 
@@ -416,6 +439,59 @@ albert_reference_crossstudy = do.call(
 )
 rownames(albert_reference_crossstudy) = NULL
 
+# Keep the full target x scale x LOD grid in memory for validation, but emit
+# only the compact table needed for interpretation and reviewer-facing use.
+extract_crossstudy_power = function(effect_scale, lod, column) {
+  rows = albert_reference_crossstudy[
+    albert_reference_crossstudy$effect_scale == effect_scale &
+      albert_reference_crossstudy$lod == lod,
+    ,
+    drop = FALSE
+  ]
+  rows = rows[match(albert_targets, rows$target), , drop = FALSE]
+  rows[[column]]
+}
+
+base_crossstudy = albert_reference_crossstudy[
+  albert_reference_crossstudy$effect_scale == 1 &
+    albert_reference_crossstudy$lod == 3.03,
+  c(
+    "target",
+    "target_analyte",
+    "target_medium",
+    "target_n",
+    "target_n_genes",
+    "n_albert_qtl_on_measured_genes",
+    "reference_mean_abs_r",
+    "reference_median_abs_r",
+    "reference_mean_pve",
+    "reference_median_pve"
+  ),
+  drop = FALSE
+]
+base_crossstudy = base_crossstudy[
+  match(albert_targets, base_crossstudy$target),
+  ,
+  drop = FALSE
+]
+
+albert_reference_crossstudy_table = base_crossstudy
+albert_reference_crossstudy_table$expected_detection_lod2 =
+  extract_crossstudy_power(1, 2, "expected_any_detection")
+albert_reference_crossstudy_table$expected_detection_lod3_03 =
+  extract_crossstudy_power(1, 3.03, "expected_any_detection")
+albert_reference_crossstudy_table$expected_detection_lod4_5 =
+  extract_crossstudy_power(1, 4.5, "expected_any_detection")
+albert_reference_crossstudy_table$expected_detection_lod7 =
+  extract_crossstudy_power(1, 7, "expected_any_detection")
+albert_reference_crossstudy_table$expected_detection_lod4_5_scale0_8 =
+  extract_crossstudy_power(0.8, 4.5, "expected_any_detection")
+albert_reference_crossstudy_table$expected_detection_lod4_5_scale0_6 =
+  extract_crossstudy_power(0.6, 4.5, "expected_any_detection")
+albert_reference_crossstudy_table$expected_same_direction_lod4_5 =
+  extract_crossstudy_power(1, 4.5, "expected_same_direction_detection")
+rownames(albert_reference_crossstudy_table) = NULL
+
 ################################################
 # TABLE 3: ALBERT ET AL. 2018 POWER BENCHMARK #
 ################################################
@@ -459,6 +535,38 @@ our_ab2018_power = correlation_detection_prob(
   lod = ab2018_lod
 )
 
+# Compare the two analytic engines across a range of effect sizes, not only
+# at the published 2.5%-PVE benchmark. This is deterministic; stochastic
+# phenotype simulation remains an independent validator-only check.
+ab2018_public_grid_power = vapply(
+  engine_grid_pve,
+  function(pve) {
+    delta = 2 * sqrt(pve / (1 - pve))
+    stats::power.t.test(
+      n = ab2018_n_per_group,
+      delta = delta,
+      sd = 1,
+      sig.level = ab2018_sig_level,
+      type = "two.sample",
+      alternative = "two.sided"
+    )$power
+  },
+  numeric(1)
+)
+ab2018_current_grid_power = vapply(
+  sqrt(engine_grid_pve),
+  function(rho) {
+    correlation_detection_prob(
+      rho = rho,
+      n = ab2018_total_n,
+      lod = ab2018_lod
+    )$p_any_detection
+  },
+  numeric(1)
+)
+ab2018_grid_difference =
+  ab2018_current_grid_power - ab2018_public_grid_power
+
 albert_2018_power_benchmark = data.frame(
   source = "Albert_et_al_2018_Figure_1C",
   published_statement = ">90% power for PVE >= 0.025",
@@ -474,6 +582,13 @@ albert_2018_power_benchmark = data.frame(
   current_engine_same_direction = our_ab2018_power$p_same_direction,
   current_minus_public_code =
     our_ab2018_power$p_any_detection - ab2018_power_t_test,
+  engine_grid_pve_min = min(engine_grid_pve),
+  engine_grid_pve_max = max(engine_grid_pve),
+  engine_grid_pve_step = unique(diff(engine_grid_pve))[[1]],
+  engine_grid_n = length(engine_grid_pve),
+  engine_grid_max_abs_difference = max(abs(ab2018_grid_difference)),
+  engine_grid_mean_abs_difference = mean(abs(ab2018_grid_difference)),
+  engine_grid_rmse = sqrt(mean(ab2018_grid_difference ^ 2)),
   agrees_with_published_gt90 =
     ab2018_power_t_test > 0.90 &&
     our_ab2018_power$p_any_detection > 0.90,
@@ -489,7 +604,7 @@ write_table(
   "critical_r_power_table.tsv"
 )
 write_table(
-  albert_reference_crossstudy,
+  albert_reference_crossstudy_table,
   "albert_reference_crossstudy.tsv"
 )
 write_table(
