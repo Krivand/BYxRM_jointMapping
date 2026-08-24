@@ -303,8 +303,19 @@ study_design = read_tsv(
 observed = read_tsv(
   paste0(power_asys, "observed_individual_rediscovery.tsv")
 )
-eligible = read_tsv(
-  gzfile(paste0(power_asys, "pair_eligible_query_qtls.tsv.gz"))
+eligible_path = paste0(
+  power_asys,
+  "pair_eligible_query_qtls.tsv.gz"
+)
+if (!file.exists(eligible_path)) {
+  stop("Missing required file: ", eligible_path)
+}
+eligible = read.delim(
+  gzfile(eligible_path),
+  sep = "\t",
+  header = TRUE,
+  stringsAsFactors = FALSE,
+  check.names = FALSE
 )
 sweep = read_tsv(
   paste0(power_asys, "pair_conditional_power_sweep.tsv")
