@@ -1,7 +1,7 @@
 ################################################
 ################################################
 ## GENETICS REVIEW POWER ANALYSIS VALIDATOR   ##
-## EFFECT-SIZE POWER CURVES                   ##
+## EFFECT-SIZE POWER CALIBRATION              ##
 ################################################
 ################################################
 
@@ -9,29 +9,40 @@
 # PRELIMINARIES #
 #################
 
-wd = "/PHShome/kv1026/p05/"
-out_dir = paste0(wd, "asys/review/power_effect_curve/")
-validation_out = paste0(out_dir, "effect_curve_validation_summary.tsv")
+source("/PHShome/kv1026/p05/remap_functions.R")
 
-required_files = c(
-  "study_design.tsv",
-  "frank_qtl_count_check.tsv",
-  "effect_size_power_surface.tsv.gz",
-  "effect_size_power_thresholds.tsv",
-  "albert_reference_effects.tsv.gz",
-  "albert_effect_summary.tsv",
-  "albert_reference_expected_detection.tsv",
-  "analytic_power_validation.tsv",
-  "model_definition.tsv"
+wd = "/PHShome/kv1026/p05/"
+out_dir = paste0(asys, "review/power_effect_curve/")
+validation_out = paste0(out_dir, "effect_curve_validation_summary.tsv")
+analysis_script = paste0(wd, "iReviewPowerEffectCurve.R")
+validator_script = paste0(wd, "iReviewPowerEffectCurveValidate.R")
+
+analysis_files = c(
+  "critical_r_power_table.tsv",
+  "albert_reference_crossstudy.tsv",
+  "albert_2018_power_benchmark.tsv"
 )
-missing_files = required_files[
-  !file.exists(paste0(out_dir, required_files))
+
+missing_files = analysis_files[
+  !file.exists(paste0(out_dir, analysis_files))
 ]
 if (length(missing_files) > 0L) {
   stop(
-    "Missing effect-curve outputs: ",
+    "Missing reviewer-power outputs: ",
     paste(missing_files, collapse = ", ")
   )
+}
+
+validation_seed = suppressWarnings(
+  as.integer(Sys.getenv("REVIEW_POWER_SEED", "20260818"))
+)
+if (is.na(validation_seed)) validation_seed = 20260818L
+
+n_validation = suppressWarnings(
+  as.integer(Sys.getenv("REVIEW_POWER_NVALID", "5000"))
+)
+if (is.na(n_validation) || n_validation < 1000L) {
+  stop("REVIEW_POWER_NVALID must be at least 1000.")
 }
 
 ####################
@@ -48,16 +59,30 @@ read_tsv = function(path) {
   )
 }
 
-read_tsv_gz = function(path) {
-  con = gzfile(path, open = "rt")
-  on.exit(close(con), add = TRUE)
-  read.delim(
-    con,
-    sep = "\t",
-    header = TRUE,
-    stringsAsFactors = FALSE,
-    check.names = FALSE
-  )
+load_single_rda = function(path, object_name = NULL) {
+
+  if (!file.exists(path)) {
+    stop("Missing required file: ", path)
+  }
+
+  env = new.env(parent = emptyenv())
+  loaded = load(path, envir = env)
+
+  if (!is.null(object_name)) {
+    if (!(object_name %in% loaded)) {
+      stop("Expected object '", object_name, "' in ", path)
+    }
+    return(env[[object_name]])
+  }
+
+  if (length(loaded) != 1L) {
+    stop(
+      "Expected one object in ", path,
+      "; found: ", paste(loaded, collapse = ", ")
+    )
+  }
+
+  env[[loaded[[1]]]]
 }
 
 add_check = function(name, passed, detail) {
@@ -69,9 +94,13 @@ add_check = function(name, passed, detail) {
   )
 }
 
+independent_rcrit = function(lod, n) {
+  sqrt(pmax(0, 1 - 10 ^ (-2 * lod / n)))
+}
+
 independent_probability = function(rho, n, lod) {
 
-  rcrit = sqrt(pmax(0, 1 - 10 ^ (-2 * lod / n)))
+  rcrit = independent_rcrit(lod = lod, n = n)
   df = n - 2
   tcrit = rcrit * sqrt(df / (1 - rcrit ^ 2))
   ncp = rho * sqrt((n - 1) / (1 - rho ^ 2))
@@ -106,418 +135,443 @@ is_nonincreasing = function(x, tolerance = 1e-12) {
   all(diff(x) <= tolerance)
 }
 
+validate_direct_simulation = function(
+  n,
+  rho,
+  lod,
+  n_rep,
+  seed
+) {
+
+  set.seed(seed)
+
+  x = rep(c(-1, 1), length.out = n)
+  x = as.numeric(scale(x))
+  residual_sd = sqrt(1 - rho ^ 2)
+
+  noise = matrix(
+    stats::rnorm(n * n_rep),
+    nrow = n,
+    ncol = n_rep
+  )
+  y = rho * x + residual_sd * noise
+  y = sweep(y, 2, colMeans(y), "-")
+
+  y_sd = sqrt(colSums(y ^ 2) / (n - 1))
+  r_hat = drop(crossprod(x, y)) / ((n - 1) * y_sd)
+  r_hat = pmax(-0.999999, pmin(0.999999, r_hat))
+  lod_hat = -n * log10(1 - r_hat ^ 2) / 2
+
+  analytic = independent_probability(
+    rho = rho,
+    n = n,
+    lod = lod
+  )
+
+  data.frame(
+    n = n,
+    rho = rho,
+    lod = lod,
+    n_rep = n_rep,
+    analytic_any = analytic[["any"]],
+    simulated_any = mean(lod_hat > lod),
+    analytic_same = analytic[["same"]],
+    simulated_same = mean(lod_hat > lod & r_hat > 0),
+    stringsAsFactors = FALSE
+  )
+}
+
 ################
 # READ OUTPUTS #
 ################
 
-study = read_tsv(paste0(out_dir, "study_design.tsv"))
-frank_check = read_tsv(paste0(out_dir, "frank_qtl_count_check.tsv"))
-power_surface = read_tsv_gz(
-  paste0(out_dir, "effect_size_power_surface.tsv.gz")
+critical = read_tsv(
+  paste0(out_dir, "critical_r_power_table.tsv")
 )
-power_thresholds = read_tsv(
-  paste0(out_dir, "effect_size_power_thresholds.tsv")
+crossstudy = read_tsv(
+  paste0(out_dir, "albert_reference_crossstudy.tsv")
 )
-albert_effects = read_tsv_gz(
-  paste0(out_dir, "albert_reference_effects.tsv.gz")
-)
-albert_summary = read_tsv(
-  paste0(out_dir, "albert_effect_summary.tsv")
-)
-albert_detection = read_tsv(
-  paste0(out_dir, "albert_reference_expected_detection.tsv")
-)
-analytic_validation = read_tsv(
-  paste0(out_dir, "analytic_power_validation.tsv")
-)
-model_definition = read_tsv(
-  paste0(out_dir, "model_definition.tsv")
+benchmark = read_tsv(
+  paste0(out_dir, "albert_2018_power_benchmark.tsv")
 )
 
 checks = list()
 check_i = 1L
 
-############################
-# STUDY / SOURCE INTEGRITY #
-############################
+########################################
+# OUTPUT SURFACE IS INTENTIONALLY SMALL #
+########################################
 
-checks[[check_i]] = add_check(
-  "ten_independent_individual_studies",
-  nrow(study) == 10L &&
-    length(unique(study$study)) == 10L &&
-    !("AlbertAlt_2018" %in% study$study),
-  paste(
-    "rows =", nrow(study),
-    "; studies =", paste(study$study, collapse = ", ")
-  )
+existing_analysis_tables = setdiff(
+  list.files(out_dir, pattern = "\\.tsv$"),
+  "effect_curve_validation_summary.tsv"
 )
-check_i = check_i + 1L
 
 checks[[check_i]] = add_check(
-  "frank_qtl_counts_match_current_individual_qtls",
-  nrow(frank_check) == 10L && all(frank_check$match),
+  "only_three_analysis_tables_are_emitted",
+  setequal(existing_analysis_tables, analysis_files) &&
+    length(existing_analysis_tables) == length(analysis_files),
   paste(
-    "matched =", sum(frank_check$match),
-    "/", nrow(frank_check)
+    "analysis tables =",
+    paste(sort(existing_analysis_tables), collapse = ", ")
   )
 )
 check_i = check_i + 1L
 
 ########################################
-# POWER SURFACE STRUCTURE AND FORMULA  #
+# CRITICAL-R TABLE                     #
 ########################################
 
-expected_rho = seq(0, 0.80, by = 0.005)
-expected_lod = seq(2, 7, by = 0.25)
-expected_surface_rows =
-  nrow(study) * length(expected_rho) * length(expected_lod)
+expected_lod = c(2, 3.03, 4.5, 7)
+expected_studies = setdiff(classicMetadata$study, "AlbertAlt_2018")
 
 checks[[check_i]] = add_check(
-  "power_surface_has_exact_requested_grid",
-  nrow(power_surface) == expected_surface_rows &&
+  "critical_table_has_exact_study_lod_grid",
+  nrow(critical) == length(expected_studies) * length(expected_lod) &&
+    setequal(unique(critical$study), expected_studies) &&
     isTRUE(all.equal(
-      sort(unique(power_surface$abs_r)),
-      expected_rho,
-      tolerance = 1e-14
-    )) &&
-    isTRUE(all.equal(
-      sort(unique(power_surface$lod)),
-      expected_lod,
+      sort(unique(critical$lod)),
+      sort(expected_lod),
       tolerance = 1e-14
     )),
   paste(
-    "rows =", nrow(power_surface),
-    "; expected =", expected_surface_rows,
-    "; rho points =", length(unique(power_surface$abs_r)),
-    "; LOD points =", length(unique(power_surface$lod))
+    "rows =", nrow(critical),
+    "; studies =", length(unique(critical$study)),
+    "; LOD values =", paste(sort(unique(critical$lod)), collapse = ", ")
   )
 )
 check_i = check_i + 1L
 
-prob_cols = c(
-  "p_same_direction",
-  "p_wrong_direction",
-  "p_any_detection"
+rcrit_expected = mapply(
+  independent_rcrit,
+  lod = critical$lod,
+  n = critical$n
 )
-prob_values = unlist(power_surface[, prob_cols], use.names = FALSE)
+rcrit_error = max(abs(critical$critical_abs_r - rcrit_expected))
+pve_error = max(
+  abs(critical$critical_pve - critical$critical_abs_r ^ 2)
+)
+
 checks[[check_i]] = add_check(
-  "power_surface_probabilities_are_valid",
-  all(is.finite(prob_values)) &&
-    all(prob_values >= -1e-14 & prob_values <= 1 + 1e-14) &&
-    max(
-      abs(
-        power_surface$p_any_detection -
-        power_surface$p_same_direction -
-        power_surface$p_wrong_direction
-      )
-    ) < 1e-12,
+  "critical_r_and_pve_are_exact",
+  rcrit_error < 1e-12 && pve_error < 1e-12,
   paste(
-    "probability range =",
-    paste(signif(range(prob_values), 7), collapse = " to ")
+    "maximum r error =", signif(rcrit_error, 7),
+    "; maximum PVE error =", signif(pve_error, 7)
   )
 )
 check_i = check_i + 1L
 
-independent_rows = do.call(
-  rbind,
-  lapply(
-    seq_len(nrow(power_surface)),
+power_specs = list(
+  c("abs_r_20pct_power", "pve_20pct_power", 0.20),
+  c("abs_r_50pct_power", "pve_50pct_power", 0.50),
+  c("abs_r_80pct_power", "pve_80pct_power", 0.80)
+)
+
+power_errors = numeric(0)
+pve_power_errors = numeric(0)
+for (spec in power_specs) {
+  r_col = spec[[1]]
+  pve_col = spec[[2]]
+  target_power = as.numeric(spec[[3]])
+
+  recomputed = vapply(
+    seq_len(nrow(critical)),
     function(i) {
-      p = independent_probability(
-        rho = power_surface$abs_r[[i]],
-        n = power_surface$n[[i]],
-        lod = power_surface$lod[[i]]
-      )
-      data.frame(
-        same = p[["same"]],
-        wrong = p[["wrong"]],
-        any = p[["any"]],
-        stringsAsFactors = FALSE
-      )
-    }
+      independent_probability(
+        rho = critical[[r_col]][[i]],
+        n = critical$n[[i]],
+        lod = critical$lod[[i]]
+      )[["any"]]
+    },
+    numeric(1)
   )
-)
-formula_diff = max(
-  abs(power_surface$p_same_direction - independent_rows$same),
-  abs(power_surface$p_wrong_direction - independent_rows$wrong),
-  abs(power_surface$p_any_detection - independent_rows$any),
-  na.rm = TRUE
-)
-checks[[check_i]] = add_check(
-  "independent_noncentral_t_recomputation_matches",
-  formula_diff < 1e-12,
-  paste("maximum absolute difference =", formula_diff)
-)
-check_i = check_i + 1L
 
-########################################
-# MONOTONICITY OF THE POWER ENGINE     #
-########################################
-
-rho_groups = split(
-  power_surface,
-  paste(power_surface$study, power_surface$lod, sep = "|")
-)
-rho_monotone = vapply(
-  rho_groups,
-  function(dat) {
-    dat = dat[order(dat$abs_r), , drop = FALSE]
-    is_nondecreasing(dat$p_same_direction)
-  },
-  logical(1)
-)
-checks[[check_i]] = add_check(
-  "power_increases_with_effect_magnitude",
-  all(rho_monotone),
-  paste(
-    "monotone study-LOD curves =",
-    sum(rho_monotone), "/", length(rho_monotone)
+  power_errors = c(
+    power_errors,
+    max(abs(recomputed - target_power))
   )
-)
-check_i = check_i + 1L
-
-lod_groups = split(
-  power_surface,
-  paste(power_surface$study, power_surface$abs_r, sep = "|")
-)
-lod_monotone = vapply(
-  lod_groups,
-  function(dat) {
-    dat = dat[order(dat$lod), , drop = FALSE]
-    is_nonincreasing(dat$p_same_direction)
-  },
-  logical(1)
-)
-checks[[check_i]] = add_check(
-  "power_decreases_with_more_stringent_lod",
-  all(lod_monotone),
-  paste(
-    "monotone study-effect curves =",
-    sum(lod_monotone), "/", length(lod_monotone)
+  pve_power_errors = c(
+    pve_power_errors,
+    max(abs(critical[[pve_col]] - critical[[r_col]] ^ 2))
   )
-)
-check_i = check_i + 1L
+}
 
-sample_power = aggregate(
-  p_same_direction ~ n + lod + abs_r,
-  data = power_surface[power_surface$abs_r >= 0.05, , drop = FALSE],
-  FUN = mean
-)
-n_groups = split(
-  sample_power,
-  paste(sample_power$lod, sample_power$abs_r, sep = "|")
-)
-n_monotone = vapply(
-  n_groups,
-  function(dat) {
-    dat = dat[order(dat$n), , drop = FALSE]
-    is_nondecreasing(dat$p_same_direction, tolerance = 1e-10)
-  },
-  logical(1)
-)
 checks[[check_i]] = add_check(
-  "power_increases_with_sample_size",
-  all(n_monotone),
+  "20_50_80pct_power_inversions_are_exact",
+  max(power_errors) < 1e-8 && max(pve_power_errors) < 1e-12,
   paste(
-    "monotone LOD-effect curves =",
-    sum(n_monotone), "/", length(n_monotone)
+    "maximum power error =", signif(max(power_errors), 7),
+    "; maximum PVE error =", signif(max(pve_power_errors), 7)
   )
 )
 check_i = check_i + 1L
 
 ########################################
-# 20/50/80% POWER INVERSION            #
+# INTERNAL POWER-SURFACE BEHAVIOR      #
 ########################################
 
-expected_threshold_rows = nrow(study) * length(expected_lod) * 3L
-threshold_structure_ok =
-  nrow(power_thresholds) == expected_threshold_rows &&
-  setequal(unique(power_thresholds$target_power), c(0.2, 0.5, 0.8)) &&
-  all(is.finite(power_thresholds$abs_r_required)) &&
-  all(
-    power_thresholds$abs_r_required >= 0 &
-    power_thresholds$abs_r_required < 1
-  )
+rho_grid = seq(0, 0.8, by = 0.005)
+lod_grid = seq(2, 7, by = 0.25)
+unique_n = sort(unique(critical$n))
 
-threshold_recomputed = vapply(
-  seq_len(nrow(power_thresholds)),
-  function(i) {
-    independent_probability(
-      rho = power_thresholds$abs_r_required[[i]],
-      n = power_thresholds$n[[i]],
-      lod = power_thresholds$lod[[i]]
-    )[["same"]]
-  },
-  numeric(1)
-)
-threshold_error = max(
-  abs(threshold_recomputed - power_thresholds$target_power),
-  na.rm = TRUE
-)
+rho_monotone = logical(0)
+lod_monotone = logical(0)
+n_monotone = logical(0)
+
+for (n in unique_n) {
+  for (lod in lod_grid) {
+    power = vapply(
+      rho_grid,
+      function(rho) independent_probability(rho, n, lod)[["any"]],
+      numeric(1)
+    )
+    rho_monotone = c(rho_monotone, is_nondecreasing(power))
+  }
+}
+
+for (n in unique_n) {
+  for (rho in rho_grid[rho_grid >= 0.05]) {
+    power = vapply(
+      lod_grid,
+      function(lod) independent_probability(rho, n, lod)[["any"]],
+      numeric(1)
+    )
+    lod_monotone = c(lod_monotone, is_nonincreasing(power))
+  }
+}
+
+for (lod in lod_grid) {
+  for (rho in rho_grid[rho_grid >= 0.05]) {
+    power = vapply(
+      unique_n,
+      function(n) independent_probability(rho, n, lod)[["any"]],
+      numeric(1)
+    )
+    n_monotone = c(
+      n_monotone,
+      is_nondecreasing(power, tolerance = 1e-10)
+    )
+  }
+}
 
 checks[[check_i]] = add_check(
-  "power_threshold_inversion_is_accurate",
-  threshold_structure_ok && threshold_error < 1e-8,
+  "power_engine_has_expected_monotonicity",
+  all(rho_monotone) && all(lod_monotone) && all(n_monotone),
   paste(
-    "rows =", nrow(power_thresholds),
-    "; maximum probability error =", threshold_error
-  )
-)
-check_i = check_i + 1L
-
-threshold_groups = split(
-  power_thresholds,
-  paste(power_thresholds$study, power_thresholds$lod, sep = "|")
-)
-threshold_order = vapply(
-  threshold_groups,
-  function(dat) {
-    dat = dat[order(dat$target_power), , drop = FALSE]
-    is_nondecreasing(dat$abs_r_required)
-  },
-  logical(1)
-)
-checks[[check_i]] = add_check(
-  "higher_power_requires_larger_effect",
-  all(threshold_order),
-  paste(
-    "ordered study-LOD sets =",
-    sum(threshold_order), "/", length(threshold_order)
+    "effect curves =", sum(rho_monotone), "/", length(rho_monotone),
+    "; LOD curves =", sum(lod_monotone), "/", length(lod_monotone),
+    "; n curves =", sum(n_monotone), "/", length(n_monotone)
   )
 )
 check_i = check_i + 1L
 
 ########################################
-# ALBERT EMPIRICAL REFERENCE           #
+# ALBERT 2018 PUBLISHED BENCHMARK      #
 ########################################
 
-albert_n_qtl = study$n_qtl[study$study == "Albert_2018"]
-albert_effect_integrity =
-  nrow(albert_summary) == 1L &&
-  nrow(albert_effects) == albert_n_qtl &&
-  albert_summary$n_qtl[[1]] == albert_n_qtl &&
-  all(is.finite(albert_effects$abs_r)) &&
-  all(albert_effects$abs_r > 0 & albert_effects$abs_r < 1) &&
-  max(abs(albert_effects$abs_r - abs(albert_effects$cor_coef))) < 1e-14
+ab_lod = 3.03
+ab_total_n = 1012L
+ab_n_per_group = 506L
+ab_pve = 0.025
+ab_r = sqrt(ab_pve)
+ab_delta = 2 * sqrt(ab_pve / (1 - ab_pve))
+ab_alpha = stats::pchisq(
+  ab_lod * 2 * log(10),
+  df = 1,
+  lower.tail = FALSE
+)
+ab_public_power = stats::power.t.test(
+  n = ab_n_per_group,
+  delta = ab_delta,
+  sd = 1,
+  sig.level = ab_alpha,
+  type = "two.sample",
+  alternative = "two.sided"
+)$power
+ab_current = independent_probability(
+  rho = ab_r,
+  n = ab_total_n,
+  lod = ab_lod
+)
+
+benchmark_error = max(
+  abs(benchmark$total_n - ab_total_n),
+  abs(benchmark$n_per_genotype_group_in_public_code - ab_n_per_group),
+  abs(benchmark$lod_threshold_in_public_code - ab_lod),
+  abs(benchmark$pve - ab_pve),
+  abs(benchmark$equivalent_abs_r - ab_r),
+  abs(benchmark$equivalent_two_group_delta - ab_delta),
+  abs(benchmark$genomewide_sig_level_from_lod - ab_alpha),
+  abs(benchmark$public_code_power_t_test - ab_public_power),
+  abs(benchmark$current_engine_any_detection - ab_current[["any"]]),
+  abs(benchmark$current_engine_same_direction - ab_current[["same"]])
+)
 
 checks[[check_i]] = add_check(
-  "albert_reference_is_exact_discovered_qtl_effect_set",
-  albert_effect_integrity,
+  "albert_2018_public_power_calculation_is_reproduced",
+  nrow(benchmark) == 1L &&
+    benchmark_error < 1e-12 &&
+    ab_public_power > 0.90 &&
+    ab_current[["any"]] > 0.90,
   paste(
-    "Albert current QTL count =", albert_n_qtl,
-    "; reference effects =", nrow(albert_effects)
+    "public-code power =", signif(ab_public_power, 8),
+    "; current engine =", signif(ab_current[["any"]], 8),
+    "; maximum table error =", signif(benchmark_error, 7)
   )
 )
 check_i = check_i + 1L
 
-expected_targets = setdiff(study$study, "Albert_2018")
-expected_scopes = c("all_albert_qtls", "target_measured_genes")
+ab_method_difference = abs(ab_current[["any"]] - ab_public_power)
+checks[[check_i]] = add_check(
+  "albert_2018_and_current_power_engines_agree",
+  ab_method_difference < 0.002,
+  paste(
+    "absolute power difference at PVE 2.5% =",
+    signif(ab_method_difference, 7)
+  )
+)
+check_i = check_i + 1L
+
+########################################
+# ALBERT CROSS-STUDY TABLE             #
+########################################
+
+expected_targets = setdiff(expected_studies, "Albert_2018")
 expected_scales = c(0.6, 0.8, 1.0)
-expected_albert_rows =
-  length(expected_targets) *
-  length(expected_scopes) *
-  length(expected_scales) *
-  length(expected_lod)
+expected_cross_rows =
+  length(expected_targets) * length(expected_scales) * length(expected_lod)
 
 checks[[check_i]] = add_check(
-  "albert_calibration_has_exact_target_scope_scale_lod_grid",
-  nrow(albert_detection) == expected_albert_rows &&
-    setequal(unique(albert_detection$target), expected_targets) &&
-    setequal(unique(albert_detection$reference_scope), expected_scopes) &&
-    setequal(unique(albert_detection$effect_scale), expected_scales) &&
+  "crossstudy_table_has_exact_target_scale_lod_grid",
+  nrow(crossstudy) == expected_cross_rows &&
+    setequal(unique(crossstudy$target), expected_targets) &&
+    setequal(unique(crossstudy$effect_scale), expected_scales) &&
     isTRUE(all.equal(
-      sort(unique(albert_detection$lod)),
-      expected_lod,
+      sort(unique(crossstudy$lod)),
+      sort(expected_lod),
       tolerance = 1e-14
     )),
   paste(
-    "rows =", nrow(albert_detection),
-    "; expected =", expected_albert_rows
+    "rows =", nrow(crossstudy),
+    "; expected =", expected_cross_rows
+  )
+)
+check_i = check_i + 1L
+
+studies = load_single_rda(
+  paste0(imed, "studies.rda"),
+  object_name = "studies"
+)
+frank_qtls_list = load_single_rda(
+  paste0(imed, "Frank/qtls_list_260204.rda"),
+  object_name = "qtls_list"
+)
+
+albert = frank_qtls_list[["Albert_2018"]]
+if (is.null(albert)) {
+  stop("Albert_2018 missing from Frank QTL object.")
+}
+albert_abs_r = abs(albert$cor_coef)
+
+reference_summary_error = numeric(0)
+expected_detection_error = numeric(0)
+
+for (target in expected_targets) {
+
+  target_genes = colnames(studies[[target]]$pheno)
+  keep = albert$gene_ID %in% target_genes
+  ref_r = albert_abs_r[keep]
+
+  rows = crossstudy[crossstudy$target == target, , drop = FALSE]
+
+  reference_summary_error = c(
+    reference_summary_error,
+    abs(rows$n_albert_qtl_on_measured_genes - length(ref_r)),
+    abs(rows$reference_mean_abs_r - mean(ref_r)),
+    abs(rows$reference_median_abs_r - stats::median(ref_r)),
+    abs(rows$reference_mean_pve - mean(ref_r ^ 2)),
+    abs(rows$reference_median_pve - stats::median(ref_r ^ 2))
+  )
+
+  for (i in seq_len(nrow(rows))) {
+    scaled_r = pmin(0.999, ref_r * rows$effect_scale[[i]])
+    probs = vapply(
+      scaled_r,
+      function(rho) {
+        independent_probability(
+          rho = rho,
+          n = rows$target_n[[i]],
+          lod = rows$lod[[i]]
+        )[["any"]]
+      },
+      numeric(1)
+    )
+    probs_same = vapply(
+      scaled_r,
+      function(rho) {
+        independent_probability(
+          rho = rho,
+          n = rows$target_n[[i]],
+          lod = rows$lod[[i]]
+        )[["same"]]
+      },
+      numeric(1)
+    )
+
+    expected_detection_error = c(
+      expected_detection_error,
+      abs(rows$expected_any_detection[[i]] - mean(probs)),
+      abs(rows$expected_same_direction_detection[[i]] - mean(probs_same))
+    )
+  }
+}
+
+checks[[check_i]] = add_check(
+  "crossstudy_reference_and_power_recompute_exactly",
+  max(reference_summary_error) < 1e-12 &&
+    max(expected_detection_error) < 1e-12,
+  paste(
+    "maximum reference-summary error =",
+    signif(max(reference_summary_error), 7),
+    "; maximum power error =",
+    signif(max(expected_detection_error), 7)
   )
 )
 check_i = check_i + 1L
 
 scale_groups = split(
-  albert_detection,
-  paste(
-    albert_detection$target,
-    albert_detection$reference_scope,
-    albert_detection$lod,
-    sep = "|"
-  )
+  crossstudy,
+  paste(crossstudy$target, crossstudy$lod, sep = "|")
 )
 scale_monotone = vapply(
   scale_groups,
   function(dat) {
     dat = dat[order(dat$effect_scale), , drop = FALSE]
-    is_nondecreasing(dat$mean_same_direction_detection)
+    is_nondecreasing(dat$expected_any_detection)
   },
   logical(1)
 )
-checks[[check_i]] = add_check(
-  "albert_expected_detection_increases_with_effect_scale",
-  all(scale_monotone),
-  paste(
-    "monotone target-scope-LOD sets =",
-    sum(scale_monotone), "/", length(scale_monotone)
-  )
-)
-check_i = check_i + 1L
 
-albert_lod_groups = split(
-  albert_detection,
-  paste(
-    albert_detection$target,
-    albert_detection$reference_scope,
-    albert_detection$effect_scale,
-    sep = "|"
-  )
+lod_groups = split(
+  crossstudy,
+  paste(crossstudy$target, crossstudy$effect_scale, sep = "|")
 )
-albert_lod_monotone = vapply(
-  albert_lod_groups,
+lod_monotone = vapply(
+  lod_groups,
   function(dat) {
     dat = dat[order(dat$lod), , drop = FALSE]
-    is_nonincreasing(dat$mean_same_direction_detection)
+    is_nonincreasing(dat$expected_any_detection)
   },
   logical(1)
 )
-checks[[check_i]] = add_check(
-  "albert_expected_detection_decreases_with_lod",
-  all(albert_lod_monotone),
-  paste(
-    "monotone target-scope-scale sets =",
-    sum(albert_lod_monotone), "/", length(albert_lod_monotone)
-  )
-)
-check_i = check_i + 1L
-
-scope_counts = reshape(
-  unique(albert_detection[, c(
-    "target",
-    "reference_scope",
-    "n_reference_qtl"
-  )]),
-  idvar = "target",
-  timevar = "reference_scope",
-  direction = "wide"
-)
-all_count_col = "n_reference_qtl.all_albert_qtls"
-measured_count_col = "n_reference_qtl.target_measured_genes"
-scope_count_ok =
-  all(scope_counts[[all_count_col]] == nrow(albert_effects)) &&
-  all(scope_counts[[measured_count_col]] > 0L) &&
-  all(scope_counts[[measured_count_col]] <= scope_counts[[all_count_col]])
 
 checks[[check_i]] = add_check(
-  "target_measured_reference_is_only_a_measurability_subset",
-  scope_count_ok,
+  "crossstudy_sensitivities_are_monotone",
+  all(scale_monotone) && all(lod_monotone),
   paste(
-    "measured-effect count range =",
-    paste(
-      range(scope_counts[[measured_count_col]]),
-      collapse = " to "
-    ),
-    "; total Albert effects =", nrow(albert_effects)
+    "effect-scale sets =", sum(scale_monotone), "/", length(scale_monotone),
+    "; LOD sets =", sum(lod_monotone), "/", length(lod_monotone)
   )
 )
 check_i = check_i + 1L
@@ -526,105 +580,108 @@ check_i = check_i + 1L
 # DIRECT PHENOTYPE SIMULATION          #
 ########################################
 
-analytic_validation$any_error = abs(
-  analytic_validation$analytic_any_detection -
-  analytic_validation$simulated_any_detection
-)
-analytic_validation$same_error = abs(
-  analytic_validation$analytic_same_direction -
-  analytic_validation$simulated_same_direction
+validation_n = unique(c(
+  min(critical$n),
+  critical$n[which.min(abs(critical$n - stats::median(critical$n)))],
+  max(critical$n)
+))
+validation_r = c(0.12, 0.16, 0.32)
+validation_lod = c(2, 4.5, 7)
+validation_grid = expand.grid(
+  n = validation_n,
+  rho = validation_r,
+  lod = validation_lod,
+  stringsAsFactors = FALSE
 )
 
+simulation = do.call(
+  rbind,
+  lapply(
+    seq_len(nrow(validation_grid)),
+    function(i) {
+      validate_direct_simulation(
+        n = validation_grid$n[[i]],
+        rho = validation_grid$rho[[i]],
+        lod = validation_grid$lod[[i]],
+        n_rep = n_validation,
+        seed = validation_seed + i
+      )
+    }
+  )
+)
+
+simulation$any_error = abs(simulation$analytic_any - simulation$simulated_any)
+simulation$same_error = abs(
+  simulation$analytic_same - simulation$simulated_same
+)
 any_se = sqrt(
   pmax(
     0,
-    analytic_validation$analytic_any_detection *
-    (1 - analytic_validation$analytic_any_detection) /
-    analytic_validation$n_rep
+    simulation$analytic_any * (1 - simulation$analytic_any) /
+      simulation$n_rep
   )
 )
 same_se = sqrt(
   pmax(
     0,
-    analytic_validation$analytic_same_direction *
-    (1 - analytic_validation$analytic_same_direction) /
-    analytic_validation$n_rep
+    simulation$analytic_same * (1 - simulation$analytic_same) /
+      simulation$n_rep
   )
 )
-analytic_validation$any_tolerance = 0.005 + 4 * any_se
-analytic_validation$same_tolerance = 0.005 + 4 * same_se
+simulation$any_tolerance = 0.005 + 4 * any_se
+simulation$same_tolerance = 0.005 + 4 * same_se
 
 simulation_ok = all(
-  analytic_validation$any_error <= analytic_validation$any_tolerance &
-  analytic_validation$same_error <= analytic_validation$same_tolerance
+  simulation$any_error <= simulation$any_tolerance &
+    simulation$same_error <= simulation$same_tolerance
 )
-max_sim_error = max(
-  analytic_validation$any_error,
-  analytic_validation$same_error,
-  na.rm = TRUE
-)
-max_sim_tolerance = max(
-  analytic_validation$any_tolerance,
-  analytic_validation$same_tolerance,
-  na.rm = TRUE
-)
+max_sim_error = max(simulation$any_error, simulation$same_error)
 
 checks[[check_i]] = add_check(
-  "direct_phenotype_simulation_supports_analytic_engine",
+  "direct_phenotype_simulation_supports_power_engine",
   simulation_ok,
   paste(
     "maximum absolute error =", signif(max_sim_error, 7),
-    "; maximum tolerance =", signif(max_sim_tolerance, 7),
-    "; settings =", nrow(analytic_validation)
+    "; settings =", nrow(simulation)
   )
 )
 check_i = check_i + 1L
 
 ########################################
-# MODEL-SEPARATION ASSERTIONS          #
+# MODEL SEPARATION / CODE HYGIENE      #
 ########################################
 
-model_map = setNames(
-  model_definition$definition,
-  model_definition$item
+analysis_text = paste(readLines(analysis_script, warn = FALSE), collapse = "\n")
+validator_text = paste(readLines(validator_script, warn = FALSE), collapse = "\n")
+forbidden_analysis_terms = c(
+  "countOverlaps",
+  "CI_min_base",
+  "CI_max_base",
+  "interval_padding",
+  "observed_rediscovery",
+  "query_qtl"
 )
-required_model_items = c(
-  "primary_effect_grid",
-  "albert_reference_role",
-  "albert_ascertainment_caveat",
-  "query_reascertainment",
-  "target_qtl_calls_in_power_model",
-  "positional_matching_in_power_model",
-  "chance_overlap"
+forbidden_present = vapply(
+  forbidden_analysis_terms,
+  function(term) grepl(term, analysis_text, fixed = TRUE),
+  logical(1)
 )
-model_items_present = all(required_model_items %in% names(model_map))
-model_separation_ok =
-  model_items_present &&
-  identical(model_map[["query_reascertainment"]], "None.") &&
-  identical(model_map[["target_qtl_calls_in_power_model"]], "None.") &&
-  grepl(
-    "None; no confidence intervals",
-    model_map[["positional_matching_in_power_model"]],
-    fixed = TRUE
-  ) &&
-  grepl(
-    "significance-selected",
-    model_map[["albert_ascertainment_caveat"]],
-    fixed = TRUE
-  ) &&
-  grepl(
-    "not an assumed probability distribution",
-    model_map[["primary_effect_grid"]],
-    fixed = TRUE
-  )
 
 checks[[check_i]] = add_check(
-  "model_cleanly_separates_power_from_qtl_matching",
-  model_separation_ok,
+  "power_analysis_contains_no_qtl_matching_machinery",
+  !any(forbidden_present),
   paste(
-    "required model-definition items present =",
-    model_items_present
+    "forbidden terms present =",
+    paste(forbidden_analysis_terms[forbidden_present], collapse = ", ")
   )
+)
+check_i = check_i + 1L
+
+checks[[check_i]] = add_check(
+  "review_power_scripts_follow_equals_style",
+  !grepl("<-", analysis_text, fixed = TRUE) &&
+    !grepl("<-", validator_text, fixed = TRUE),
+  "No '<-' assignments detected in primary or validator script."
 )
 check_i = check_i + 1L
 
@@ -641,17 +698,17 @@ write.table(
   row.names = FALSE
 )
 
-cat("\nEFFECT-SIZE POWER ANALYSIS VALIDATION\n")
+cat("\nSTREAMLINED EFFECT-SIZE POWER VALIDATION\n")
 print(validation_summary, row.names = FALSE)
 cat("\n")
 
 failed = validation_summary$check[!validation_summary$passed]
 if (length(failed) > 0L) {
   stop(
-    "Effect-size power validation failed: ",
+    "Streamlined reviewer-power validation failed: ",
     paste(failed, collapse = ", ")
   )
 }
 
-message("All effect-size power checks passed.")
+message("All streamlined reviewer-power checks passed.")
 message("Validation summary: ", validation_out)
