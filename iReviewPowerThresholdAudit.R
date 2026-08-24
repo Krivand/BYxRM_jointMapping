@@ -23,10 +23,15 @@ if (!file.exists(threshold_log)) {
   stop("Missing remapping log: ", threshold_log)
 }
 
-analysis_studies = setdiff(
-  classicMetadata$study,
-  "AlbertAlt_2018"
+all_studies = classicMetadata$study
+analysis_studies = setdiff(all_studies, "AlbertAlt_2018")
+
+study_seed = vapply(
+  all_studies,
+  seed_from,
+  integer(1)
 )
+names(study_seed) = all_studies
 
 ####################
 # HELPER FUNCTIONS #
@@ -100,26 +105,90 @@ write_table = function(x, filename) {
   )
 }
 
+normalize_chr = function(x) {
+
+  x = trimws(as.character(x))
+  x = sub("^chr", "", x, ignore.case = TRUE)
+  x = toupper(x)
+
+  roman = c(
+    "I", "II", "III", "IV",
+    "V", "VI", "VII", "VIII",
+    "IX", "X", "XI", "XII",
+    "XIII", "XIV", "XV", "XVI"
+  )
+
+  idx = match(x, roman)
+  out = rep(NA_integer_, length(x))
+  out[!is.na(idx)] = idx[!is.na(idx)]
+
+  numeric_x = suppressWarnings(as.integer(x))
+  use_numeric = is.na(out) & is.finite(numeric_x)
+  out[use_numeric] = numeric_x[use_numeric]
+  out
+}
+
 ########################
 # PARSE REMAPPING LOG  #
 ########################
 
 lines = readLines(threshold_log, warn = FALSE)
 
+current_call = NA_integer_
 current_study = NA_character_
-current_method = NA_character_
+current_mode = NA_character_
+current_mode_source = NA_character_
 current_chr = NA_character_
-current_block = NA_integer_
-block_counter = 0L
+current_pass = 0L
+pending_study = NA_character_
+pending_mode = NA_character_
+call_counter = 0L
 
-blocks = list()
-block_index = 1L
+calls = list()
 records = list()
 record_index = 1L
+
+start_call = function(
+  line_number,
+  study = NA_character_,
+  mode = NA_character_,
+  mode_source = NA_character_,
+  seed = NA_integer_
+) {
+
+  call_counter <<- call_counter + 1L
+  current_call <<- call_counter
+  current_study <<- study
+  current_mode <<- mode
+  current_mode_source <<- mode_source
+  current_chr <<- NA_character_
+  current_pass <<- 0L
+
+  calls[[current_call]] <<- data.frame(
+    call = current_call,
+    start_line = line_number,
+    finish_line = NA_integer_,
+    study = study,
+    seed = seed,
+    mode = mode,
+    mode_source = mode_source,
+    has_mm_signature = FALSE,
+    stringsAsFactors = FALSE
+  )
+}
 
 for (line_number in seq_along(lines)) {
 
   line = lines[[line_number]]
+
+  if (grepl("Mapping FULL", line, ignore.case = TRUE) ||
+      grepl("FULL mapping", line, ignore.case = TRUE)) {
+    pending_mode = "f"
+  }
+  if (grepl("Mapping SIMPLE", line, ignore.case = TRUE) ||
+      grepl("SIMPLE mapping", line, ignore.case = TRUE)) {
+    pending_mode = "s"
+  }
 
   if (grepl(
     "^Mapping QTLs for .+ \\([fs]\\)\\.\\.\\.$",
@@ -127,40 +196,81 @@ for (line_number in seq_along(lines)) {
     perl = TRUE
   )) {
 
-    study = extract_first_match(
+    pending_study = extract_first_match(
       "^Mapping QTLs for (.+) \\([fs]\\)\\.\\.\\.$",
       line
     )
-    method = extract_first_match(
+    pending_mode = extract_first_match(
       "^Mapping QTLs for .+ \\(([fs])\\)\\.\\.\\.$",
       line
     )
+  }
 
-    block_counter = block_counter + 1L
-    current_block = block_counter
-    current_study = study
-    current_method = method
-    current_chr = NA_character_
+  if (grepl("^mapQTL: seed set to [0-9]+$", line)) {
 
-    blocks[[block_index]] = data.frame(
-      block = current_block,
-      study = current_study,
-      method = current_method,
-      start_line = line_number,
-      finish_line = NA_integer_,
-      completed = FALSE,
-      stringsAsFactors = FALSE
+    this_seed = suppressWarnings(
+      as.integer(
+        sub("^mapQTL: seed set to ([0-9]+)$", "\\1", line)
+      )
     )
-    block_index = block_index + 1L
+    seed_hit = names(study_seed)[study_seed == this_seed]
+    seed_study = if (length(seed_hit) == 1L) {
+      seed_hit[[1]]
+    } else {
+      NA_character_
+    }
+
+    this_study = if (!is.na(seed_study)) {
+      seed_study
+    } else {
+      pending_study
+    }
+
+    this_mode_source = if (!is.na(pending_mode)) {
+      "explicit_log_context"
+    } else {
+      NA_character_
+    }
+
+    start_call(
+      line_number = line_number,
+      study = this_study,
+      mode = pending_mode,
+      mode_source = this_mode_source,
+      seed = this_seed
+    )
+
+    pending_study = NA_character_
     next
   }
 
   if (grepl("^Mapping:[[:space:]]+", line)) {
+
+    if (is.na(current_call)) {
+      start_call(
+        line_number = line_number,
+        study = pending_study,
+        mode = pending_mode,
+        mode_source = if (!is.na(pending_mode)) {
+          "explicit_log_context"
+        } else {
+          NA_character_
+        }
+      )
+      pending_study = NA_character_
+    }
+
     current_chr = sub(
       "^Mapping:[[:space:]]+([^[:space:]]+).*$",
       "\\1",
       line
     )
+    current_pass = 0L
+  }
+
+  if (!is.na(current_call) &&
+      grepl("MM residualization", line, fixed = TRUE)) {
+    calls[[current_call]]$has_mm_signature = TRUE
   }
 
   if (grepl("FDR Thresh 5%", line, fixed = TRUE)) {
@@ -175,45 +285,34 @@ for (line_number in seq_along(lines)) {
       )
     )
 
+    current_pass = current_pass + 1L
+
     records[[record_index]] = data.frame(
       line_number = line_number,
-      block = current_block,
+      call = current_call,
       study = current_study,
-      method = current_method,
+      seed = if (!is.na(current_call)) calls[[current_call]]$seed else NA_integer_,
+      mode = current_mode,
+      mode_source = current_mode_source,
       chromosome = current_chr,
+      chromosome_number = normalize_chr(current_chr),
+      pass = current_pass,
       lod = value,
       stringsAsFactors = FALSE
     )
     record_index = record_index + 1L
   }
 
-  if (grepl("^Finished mapping QTLs for ", line)) {
-
-    finished_study = extract_first_match(
-      "^Finished mapping QTLs for (.+) in [0-9.]+ s$",
-      line
-    )
-
-    if (
-      is.finite(current_block) &&
-      !is.na(finished_study) &&
-      identical(finished_study, current_study)
-    ) {
-      hit = which(vapply(
-        blocks,
-        function(x) x$block[[1]] == current_block,
-        logical(1)
-      ))
-      if (length(hit) == 1L) {
-        blocks[[hit]]$finish_line = line_number
-        blocks[[hit]]$completed = TRUE
-      }
+  if (grepl("^mapQTL: total elapsed = ", line)) {
+    if (!is.na(current_call)) {
+      calls[[current_call]]$finish_line = line_number
     }
-
+    current_call = NA_integer_
     current_study = NA_character_
-    current_method = NA_character_
+    current_mode = NA_character_
+    current_mode_source = NA_character_
     current_chr = NA_character_
-    current_block = NA_integer_
+    current_pass = 0L
   }
 }
 
@@ -225,107 +324,106 @@ if (length(records) == 0L) {
 }
 
 threshold_records_all = do.call(rbind, records)
-threshold_blocks = if (length(blocks) > 0L) {
-  do.call(rbind, blocks)
+threshold_calls = if (length(calls) > 0L) {
+  do.call(rbind, calls)
 } else {
-  data.frame(
-    block = integer(0),
-    study = character(0),
-    method = character(0),
-    start_line = integer(0),
-    finish_line = integer(0),
-    completed = logical(0),
-    stringsAsFactors = FALSE
+  data.frame()
+}
+
+# A FULL map uses the LOCO mixed-model residualization. When an older wrapper
+# did not print an explicit FULL/SIMPLE label, the mapQTL MM log signature
+# identifies FULL calls without relying on run order.
+if (nrow(threshold_calls) > 0L) {
+  infer_full = is.na(threshold_calls$mode) &
+    threshold_calls$has_mm_signature
+  threshold_calls$mode[infer_full] = "f"
+  threshold_calls$mode_source[infer_full] = "MM_residualization_signature"
+
+  call_match = match(
+    threshold_records_all$call,
+    threshold_calls$call
   )
+  threshold_records_all$study = threshold_calls$study[call_match]
+  threshold_records_all$mode = threshold_calls$mode[call_match]
+  threshold_records_all$mode_source = threshold_calls$mode_source[call_match]
 }
 
 threshold_records_all$assigned =
   !is.na(threshold_records_all$study) &
-  !is.na(threshold_records_all$method) &
-  !is.na(threshold_records_all$chromosome) &
+  !is.na(threshold_records_all$mode) &
+  !is.na(threshold_records_all$chromosome_number) &
   is.finite(threshold_records_all$lod)
 
+# Always write raw diagnostics before selecting calls.
+context_index = which(grepl("FDR Thresh 5%", lines, fixed = TRUE))
+threshold_context = data.frame(
+  line_number = context_index,
+  previous_3 = vapply(
+    context_index,
+    function(i) paste(lines[pmax(1, i - 3):(i - 1)], collapse = " | "),
+    character(1)
+  ),
+  threshold_line = lines[context_index],
+  next_2 = vapply(
+    context_index,
+    function(i) paste(lines[(i + 1):pmin(length(lines), i + 2)], collapse = " | "),
+    character(1)
+  ),
+  stringsAsFactors = FALSE
+)
+
+write_table(threshold_calls, "threshold_mapqtl_calls.tsv")
+write_table(threshold_records_all, "threshold_records_all.tsv")
+write_table(threshold_context, "threshold_context.tsv")
+
 ###############################
-# SELECT FULL-MAP BLOCKS ONLY #
+# SELECT FULL-MAP CALLS ONLY  #
 ###############################
 
-full_blocks = threshold_blocks[
-  threshold_blocks$method == "f" &
-  threshold_blocks$study %in% analysis_studies,
+full_calls = threshold_calls[
+  threshold_calls$mode == "f" &
+  threshold_calls$study %in% analysis_studies,
   ,
   drop = FALSE
 ]
 
-if (nrow(full_blocks) == 0L) {
-  write_table(
-    threshold_records_all,
-    "threshold_records_all.tsv"
-  )
-  write_table(
-    threshold_blocks,
-    "threshold_mapping_blocks.tsv"
-  )
+if (nrow(full_calls) == 0L) {
   stop(
-    "No structured FULL-map blocks were recovered. ",
-    "Audit files were written for inspection."
+    "No FULL mapQTL calls could be assigned. Raw diagnostics were written to ",
+    power_asys,
+    "threshold_mapqtl_calls.tsv, threshold_records_all.tsv, and threshold_context.tsv."
   )
 }
 
-selected_blocks = do.call(
+# If a study appears in more than one historical FULL call, use its latest
+# call. This avoids mixing repeated reruns of the same mapping job.
+selected_calls = do.call(
   rbind,
   lapply(
     analysis_studies,
     function(study) {
-
-      candidates = full_blocks[
-        full_blocks$study == study,
+      candidates = full_calls[
+        full_calls$study == study,
         ,
         drop = FALSE
       ]
-
-      if (nrow(candidates) == 0L) {
-        return(NULL)
-      }
-
-      completed = candidates[candidates$completed, , drop = FALSE]
-      if (nrow(completed) > 0L) {
-        candidates = completed
-      }
-
-      candidates[
-        which.max(candidates$block),
-        ,
-        drop = FALSE
-      ]
+      if (nrow(candidates) == 0L) return(NULL)
+      candidates[which.max(candidates$call), , drop = FALSE]
     }
   )
 )
 
-if (is.null(selected_blocks) || nrow(selected_blocks) == 0L) {
-  stop("Could not select any FULL-map threshold blocks.")
+if (is.null(selected_calls) || nrow(selected_calls) == 0L) {
+  stop("Could not select any FULL mapQTL calls.")
 }
 
 threshold_records = threshold_records_all[
-  threshold_records_all$block %in% selected_blocks$block &
-  threshold_records_all$assigned,
+  threshold_records_all$call %in% selected_calls$call &
+  threshold_records_all$assigned &
+  threshold_records_all$mode == "f",
   ,
   drop = FALSE
 ]
-
-threshold_records = threshold_records[
-  threshold_records$study %in% analysis_studies &
-  threshold_records$method == "f",
-  ,
-  drop = FALSE
-]
-
-threshold_records$pass = ave(
-  threshold_records$line_number,
-  threshold_records$study,
-  threshold_records$chromosome,
-  FUN = seq_along
-)
-threshold_records$pass = as.integer(threshold_records$pass)
 
 missing_studies = setdiff(
   analysis_studies,
@@ -336,146 +434,99 @@ missing_studies = setdiff(
 # SUMMARIZE THRESHOLD SHAPE #
 ############################
 
-by_study = do.call(
+by_study_all_pass = do.call(
   rbind,
   lapply(
     analysis_studies,
     function(study) {
-
       dat = threshold_records[
         threshold_records$study == study,
         ,
         drop = FALSE
       ]
-
       out = summarize_thresholds(dat$lod)
       out$study = study
-      out$n_chromosomes = length(unique(dat$chromosome))
-      out$n_passes_max = if (nrow(dat) > 0L) {
-        max(dat$pass)
-      } else {
-        0L
-      }
-      out$selected_block = if (study %in% selected_blocks$study) {
-        selected_blocks$block[match(study, selected_blocks$study)]
-      } else {
-        NA_integer_
-      }
-      out$block_completed = if (study %in% selected_blocks$study) {
-        selected_blocks$completed[match(study, selected_blocks$study)]
-      } else {
-        NA
-      }
+      out$n_chromosomes = length(unique(dat$chromosome_number))
+      out$n_passes_max = if (nrow(dat) > 0L) max(dat$pass) else 0L
       out
     }
   )
 )
 
-by_study = by_study[
-  match(analysis_studies, by_study$study),
-  c(
-    "study",
-    "n_thresholds",
-    "n_chromosomes",
-    "n_passes_max",
-    "minimum",
-    "q10",
-    "q25",
-    "median",
-    "mean",
-    "q75",
-    "q90",
-    "maximum",
-    "sd",
-    "iqr",
-    "selected_block",
-    "block_completed"
-  ),
+first_pass = threshold_records[
+  threshold_records$pass == 1L,
+  ,
   drop = FALSE
 ]
 
-study_chr_groups = split(
-  threshold_records,
-  interaction(
-    threshold_records$study,
-    threshold_records$chromosome,
-    drop = TRUE
-  )
-)
-
-by_study_chr = do.call(
+by_study_first_pass = do.call(
   rbind,
   lapply(
-    study_chr_groups,
-    function(dat) {
-      summary = summarize_thresholds(dat$lod)
-      data.frame(
-        study = dat$study[[1]],
-        chromosome = dat$chromosome[[1]],
-        n_passes = nrow(dat),
-        minimum = summary$minimum,
-        median = summary$median,
-        maximum = summary$maximum,
-        stringsAsFactors = FALSE
-      )
+    analysis_studies,
+    function(study) {
+      dat = first_pass[first_pass$study == study, , drop = FALSE]
+      out = summarize_thresholds(dat$lod)
+      out$study = study
+      out$n_chromosomes = length(unique(dat$chromosome_number))
+      out
     }
   )
 )
 
-block_threshold_counts = merge(
-  threshold_blocks,
-  aggregate(
-    lod ~ block,
-    data = threshold_records_all[
-      is.finite(threshold_records_all$lod),
-      ,
-      drop = FALSE
-    ],
-    FUN = length
+first_pass_grid = expand.grid(
+  study = analysis_studies,
+  chromosome_number = 1:16,
+  stringsAsFactors = FALSE
+)
+first_pass_lookup = first_pass[
+  ,
+  c(
+    "study",
+    "chromosome_number",
+    "chromosome",
+    "lod",
+    "line_number",
+    "call",
+    "mode_source"
   ),
-  by = "block",
+  drop = FALSE
+]
+
+if (any(duplicated(first_pass_lookup[, c("study", "chromosome_number")]))) {
+  stop(
+    "More than one selected first-pass threshold was recovered for a study/chromosome. ",
+    "Inspect threshold_full_first_pass_records.tsv."
+  )
+}
+
+first_pass_by_study_chr = merge(
+  first_pass_grid,
+  first_pass_lookup,
+  by = c("study", "chromosome_number"),
   all.x = TRUE,
   sort = FALSE
 )
-names(block_threshold_counts)[
-  names(block_threshold_counts) == "lod"
-] = "n_thresholds"
-block_threshold_counts$n_thresholds[
-  is.na(block_threshold_counts$n_thresholds)
-] = 0L
+first_pass_by_study_chr = first_pass_by_study_chr[
+  order(
+    match(first_pass_by_study_chr$study, analysis_studies),
+    first_pass_by_study_chr$chromosome_number
+  ),
+  ,
+  drop = FALSE
+]
+first_pass_by_study_chr$available =
+  is.finite(first_pass_by_study_chr$lod)
 
 ########################
 # WRITE AUDIT OUTPUTS  #
 ########################
 
-write_table(
-  threshold_records_all,
-  "threshold_records_all.tsv"
-)
-write_table(
-  threshold_blocks,
-  "threshold_mapping_blocks.tsv"
-)
-write_table(
-  block_threshold_counts,
-  "threshold_mapping_block_counts.tsv"
-)
-write_table(
-  selected_blocks,
-  "threshold_selected_full_blocks.tsv"
-)
-write_table(
-  threshold_records,
-  "threshold_full_records.tsv"
-)
-write_table(
-  by_study,
-  "threshold_full_by_study.tsv"
-)
-write_table(
-  by_study_chr,
-  "threshold_full_by_study_chromosome.tsv"
-)
+write_table(selected_calls, "threshold_selected_full_calls.tsv")
+write_table(threshold_records, "threshold_full_records.tsv")
+write_table(first_pass, "threshold_full_first_pass_records.tsv")
+write_table(by_study_all_pass, "threshold_full_all_pass_by_study.tsv")
+write_table(by_study_first_pass, "threshold_full_first_pass_by_study.tsv")
+write_table(first_pass_by_study_chr, "threshold_full_first_pass_by_study_chr.tsv")
 
 ########################
 # FINAL AUDIT SUMMARY  #
@@ -491,37 +542,50 @@ cat(
   sep = ""
 )
 cat(
-  "Unassigned threshold lines: ",
-  sum(!threshold_records_all$assigned),
-  "\n",
-  sep = ""
-)
-cat(
-  "Selected FULL-map records: ",
+  "Assigned FULL-map threshold lines: ",
   nrow(threshold_records),
   "\n",
   sep = ""
 )
-cat("\nPer-study FULL-map threshold summary:\n")
-print(by_study, row.names = FALSE)
+cat(
+  "Assigned FULL first-pass thresholds: ",
+  nrow(first_pass),
+  " / ",
+  length(analysis_studies) * 16L,
+  " possible study/chromosome cells\n",
+  sep = ""
+)
+
+cat("\nSelected FULL calls:\n")
+print(selected_calls, row.names = FALSE)
+
+cat("\nPer-study FIRST-PASS threshold summary:\n")
+print(by_study_first_pass, row.names = FALSE)
 
 if (length(missing_studies) > 0L) {
   stop(
     "No usable FULL-map thresholds recovered for: ",
     paste(missing_studies, collapse = ", "),
-    ". Inspect threshold_mapping_blocks.tsv and threshold_records_all.tsv."
+    ". Inspect threshold_mapqtl_calls.tsv and threshold_context.tsv."
   )
 }
 
-if (any(!by_study$block_completed)) {
+missing_first_pass = first_pass_by_study_chr[
+  !first_pass_by_study_chr$available,
+  c("study", "chromosome_number"),
+  drop = FALSE
+]
+
+if (nrow(missing_first_pass) > 0L) {
   warning(
-    "At least one selected FULL-map block lacks a recorded completion line; ",
-    "inspect threshold_selected_full_blocks.tsv before using its thresholds."
+    nrow(missing_first_pass),
+    " study/chromosome first-pass thresholds were not recoverable. ",
+    "Do not run the primary power model until these cells are reviewed."
   )
 }
 
 message(
-  "Threshold audit complete. Primary candidate cutoff is the per-study ",
-  "median; sensitivity bounds should be chosen only after inspecting the ",
-  "actual per-study threshold counts and ranges."
+  "Threshold audit complete. The primary power model should use recovered ",
+  "FULL-map first-pass thresholds by study and chromosome rather than a pooled ",
+  "median or q10/q90 threshold summary."
 )
