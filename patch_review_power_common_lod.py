@@ -182,6 +182,23 @@ if old_final not in text:
     raise SystemExit('Final reference-LOD message not found; refusing to patch.')
 text = text.replace(old_final, new_final, 1)
 
+# Rename single-LOD outputs so they cannot be mistaken for the primary result.
+rename_pairs = {
+    'threshold_label = "reference_median"': 'threshold_label = "display_lod_4.50"',
+    'reference_lod = lod_reference,': 'display_lod = lod_reference,',
+    '"query_ascertainment_effect_summary.tsv"': '"query_ascertainment_effect_summary_display_lod4.5.tsv"',
+    '"shared_effect_rediscovery.tsv"': '"shared_effect_rediscovery_display_lod4.5.tsv"',
+    '"shared_effect_rediscovery_summary.tsv"': '"shared_effect_rediscovery_summary_display_lod4.5.tsv"',
+    '"observed_vs_expected.tsv"': '"observed_vs_expected_display_lod4.5.tsv"',
+    '"observed_vs_expected_summary.tsv"': '"observed_vs_expected_summary_display_lod4.5.tsv"',
+    '"observed_vs_expected_by_comparison.tsv"': '"observed_vs_expected_by_comparison_display_lod4.5.tsv"',
+    '"observed_vs_expected",\n  6,\n  6': '"observed_vs_expected_display_lod4.5",\n  6,\n  6'
+}
+for old, new in rename_pairs.items():
+    if old not in text:
+        raise SystemExit(f'Expected single-LOD label not found: {old}')
+    text = text.replace(old, new, 1)
+
 path.write_text(text)
 print('Patched iReviewPower.R for common LOD 2-7 sensitivity analysis.')
 print('Primary output: asys/review/power/observed_threshold_envelope.tsv')
