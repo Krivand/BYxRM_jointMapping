@@ -18,8 +18,9 @@ clean_outputs = Sys.getenv("REVIEW_OUTPUT_CLEAN", "1") == "1"
 # CURRENT REVIEW OUTPUT CONTRACT       #
 ########################################
 
-# Each current review analysis owns one subdirectory. Keeping the contract
-# explicit makes stale files from superseded iterations visible and removable.
+# This is a whitelist, not a recency heuristic. Only outputs supporting the
+# current reviewer response remain under review/. Superseded exploratory
+# analyses are removed even if their files have recent modification times.
 asys_allowed = list(
   go = c(
     "GO_significant_terms.tsv",
@@ -38,14 +39,6 @@ asys_allowed = list(
     "segregant_dependence_summary.tsv",
     "segregant_dependence_validation_summary.tsv"
   ),
-  interaction_power = c(
-    "interaction_design_868.tsv",
-    "lrt_wald_calibration.tsv",
-    "interaction_thresholds.tsv",
-    "interaction_power_by_magnitude.tsv",
-    "interaction_power_by_magnitude_prevalence.tsv",
-    "observed_interaction_summary.tsv"
-  ),
   power_effect_curve = c(
     "critical_r_power_table.tsv",
     "albert_reference_crossstudy.tsv",
@@ -62,13 +55,9 @@ figure3_allowed = c(
   "albert_figure3_observed_vs_power_lod4_5.png"
 )
 
-# Current interaction-dependence analysis is deliberately table-only. The old
-# RDS from the superseded power/prevalence implementation is stale.
-imed_allowed = list(
-  interaction_power = c(
-    "review_interaction_power.rds"
-  )
-)
+# No current reviewer analysis requires an intermediate under imed/review/.
+# The former interaction_power and clone-dependence RDS files are superseded.
+imed_allowed = list()
 
 asys_allowed_directories = c(names(asys_allowed), "power")
 imed_allowed_directories = names(imed_allowed)
@@ -77,13 +66,15 @@ imed_allowed_directories = names(imed_allowed)
 # CLEANING HELPERS #
 ####################
 
-removed = character(0)
+removed_state = new.env(parent = emptyenv())
+removed_state$paths = character(0)
 
 remove_path = function(path) {
   if (file.exists(path) || dir.exists(path)) {
     unlink(path, recursive = TRUE, force = TRUE)
-    removed <<- c(removed, path)
+    removed_state$paths = c(removed_state$paths, path)
   }
+  invisible(NULL)
 }
 
 clean_exact_directory = function(path, allowed) {
@@ -165,7 +156,8 @@ if (clean_outputs) {
   )
 
   # review/power is retained only for the historical permutation-threshold
-  # audit. Superseded individual-QTL power outputs in this directory are stale.
+  # audit used to justify the LOD sensitivity range. Everything else there is
+  # superseded.
   threshold_dir = paste0(review_asys, "power/")
   if (dir.exists(threshold_dir)) {
     threshold_entries = list.files(
@@ -191,6 +183,8 @@ if (clean_outputs) {
     )
   }
 }
+
+removed = removed_state$paths
 
 ########################
 # BUILD OUTPUT MANIFEST #
@@ -221,6 +215,7 @@ manifest = if (length(review_tables) > 0L) {
     top_directory = top_directory,
     size_bytes = info$size,
     modified = format(info$mtime, "%Y-%m-%d %H:%M:%S"),
+    status = "current",
     stringsAsFactors = FALSE
   )
 
@@ -231,6 +226,7 @@ manifest = if (length(review_tables) > 0L) {
     top_directory = character(0),
     size_bytes = numeric(0),
     modified = character(0),
+    status = character(0),
     stringsAsFactors = FALSE
   )
 }
@@ -251,7 +247,7 @@ write.table(
 
 cat("\nREVIEW OUTPUT AUDIT\n")
 cat("Review table root: ", review_asys, "\n", sep = "")
-cat("Tables found: ", nrow(manifest), "\n", sep = "")
+cat("Current tables found: ", nrow(manifest), "\n", sep = "")
 cat("Stale paths removed: ", length(removed), "\n", sep = "")
 
 if (length(removed) > 0L) {
