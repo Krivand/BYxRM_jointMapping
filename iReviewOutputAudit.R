@@ -10,9 +10,9 @@ source("/PHShome/kv1026/p05/remap_functions.R")
 review_asys = paste0(asys, "review/")
 review_imed = paste0(imed, "review/")
 final_asys = paste0(review_asys, "final/")
+build_asys = paste0(review_asys, ".final_build/")
 
 ensure_directory(review_asys)
-ensure_directory(final_asys)
 
 final_files = c(
   "replicate_filtering.tsv",
@@ -33,10 +33,10 @@ read_tsv = function(path) {
   )
 }
 
-write_final = function(x, filename) {
+write_build = function(x, filename) {
   write.table(
     x,
-    file = paste0(final_asys, filename),
+    file = paste0(build_asys, filename),
     sep = "\t",
     quote = FALSE,
     row.names = FALSE,
@@ -44,18 +44,46 @@ write_final = function(x, filename) {
   )
 }
 
+bundle_is_exact = function(path) {
+  if (!dir.exists(path)) return(FALSE)
+  present = sort(list.files(path, pattern = "\\.tsv$"))
+  identical(present, sort(final_files))
+}
+
 source_paths = c(
-  missingness = paste0(review_asys, "missingness/missingness_filter_summary.tsv"),
-  genes = paste0(review_asys, "genes/supported_gene_characteristics_summary.tsv"),
+  missingness = paste0(
+    review_asys,
+    "missingness/missingness_filter_summary.tsv"
+  ),
+  genes = paste0(
+    review_asys,
+    "genes/supported_gene_characteristics_summary.tsv"
+  ),
   go_key = paste0(review_asys, "go/GO_key_terms.tsv"),
-  go_contrast = paste0(review_asys, "go/GO_discordant_vs_other_interactions.tsv"),
-  critical = paste0(review_asys, "power_effect_curve/critical_r_power_table.tsv"),
-  crossstudy = paste0(review_asys, "power_effect_curve/albert_reference_crossstudy.tsv"),
-  benchmark = paste0(review_asys, "power_effect_curve/albert_2018_power_benchmark.tsv"),
-  power_validation = paste0(review_asys, "power_effect_curve/effect_curve_validation_summary.tsv"),
+  go_contrast = paste0(
+    review_asys,
+    "go/GO_discordant_vs_other_interactions.tsv"
+  ),
+  critical = paste0(
+    review_asys,
+    "power_effect_curve/critical_r_power_table.tsv"
+  ),
+  crossstudy = paste0(
+    review_asys,
+    "power_effect_curve/albert_reference_crossstudy.tsv"
+  ),
+  benchmark = paste0(
+    review_asys,
+    "power_effect_curve/albert_2018_power_benchmark.tsv"
+  ),
+  power_validation = paste0(
+    review_asys,
+    "power_effect_curve/effect_curve_validation_summary.tsv"
+  ),
   figure3 = paste0(
     review_asys,
-    "power_effect_curve/figure3_calibration/albert_figure3_observed_vs_power.tsv"
+    "power_effect_curve/figure3_calibration/",
+    "albert_figure3_observed_vs_power.tsv"
   ),
   dependence = paste0(
     review_asys,
@@ -68,23 +96,32 @@ source_paths = c(
 )
 
 source_ready = all(file.exists(source_paths))
-final_ready = all(file.exists(paste0(final_asys, final_files)))
+final_ready = bundle_is_exact(final_asys)
+
+########################################
+# BUILD INTO A TEMPORARY DIRECTORY     #
+########################################
 
 if (source_ready) {
+
+  if (dir.exists(build_asys)) {
+    unlink(build_asys, recursive = TRUE, force = TRUE)
+  }
+  ensure_directory(build_asys)
 
   ########################################
   # 1. REPLICATE / MISSINGNESS RESPONSE  #
   ########################################
 
   replicate_filtering = read_tsv(source_paths[["missingness"]])
-  write_final(replicate_filtering, "replicate_filtering.tsv")
+  write_build(replicate_filtering, "replicate_filtering.tsv")
 
   ########################################
   # 2. REPRESENTATIVENESS RESPONSE       #
   ########################################
 
   supported_gene_characteristics = read_tsv(source_paths[["genes"]])
-  write_final(
+  write_build(
     supported_gene_characteristics,
     "supported_gene_characteristics.tsv"
   )
@@ -121,7 +158,7 @@ if (source_ready) {
     digits = 2
   )
 
-  write_final(go_key, "interaction_GO.tsv")
+  write_build(go_key, "interaction_GO.tsv")
 
   ########################################
   # 4. INDIVIDUAL-QTL POWER RESPONSE     #
@@ -178,6 +215,7 @@ if (source_ready) {
   if (any(is.na(cross_index))) {
     stop("Could not align Albert-reference targets to the study power table.")
   }
+
   power_summary$predicted_lod4_5_scale0_8_percent[cross_index] =
     100 * crossstudy$expected_detection_lod4_5_scale0_8
   power_summary$predicted_lod4_5_scale0_6_percent[cross_index] =
@@ -196,13 +234,16 @@ if (source_ready) {
     100 * benchmark$engine_grid_max_abs_difference[[1]]
 
   simulation_row = power_validation[
-    power_validation$check == "direct_phenotype_simulation_supports_power_engine",
+    power_validation$check ==
+      "direct_phenotype_simulation_supports_power_engine",
     ,
     drop = FALSE
   ]
+
   if (nrow(simulation_row) != 1L || !simulation_row$passed[[1]]) {
     stop("Direct phenotype-simulation validation is unavailable or failed.")
   }
+
   simulation_error = suppressWarnings(
     as.numeric(
       sub(
@@ -212,9 +253,11 @@ if (source_ready) {
       )
     )
   )
+
   if (!is.finite(simulation_error)) {
     stop("Could not parse the direct-simulation validation error.")
   }
+
   power_summary$max_direct_simulation_difference_pp[[albert_i]] =
     100 * simulation_error
 
@@ -243,10 +286,7 @@ if (source_ready) {
   )
 
   power_summary = rbind(power_summary, mean_row)
-  write_final(
-    power_summary,
-    "individual_power_and_rediscovery.tsv"
-  )
+  write_build(power_summary, "individual_power_and_rediscovery.tsv")
 
   ########################################
   # 5. SHARED-SEGREGANT RESPONSE         #
@@ -286,19 +326,46 @@ if (source_ready) {
     ),
     drop = FALSE
   ]
+
   dependence_final$n_dataset_pairs = nrow(panel)
   dependence_final$n_dataset_pairs_with_shared_segregants =
     sum(panel$n_shared > 0)
 
-  write_final(dependence_final, "segregant_dependence.tsv")
+  write_build(dependence_final, "segregant_dependence.tsv")
+
+  ########################################
+  # VALIDATE BEFORE DELETING ANY SOURCE  #
+  ########################################
+
+  if (!bundle_is_exact(build_asys)) {
+    stop(
+      "Temporary final reviewer bundle is not exactly five tables: ",
+      paste(list.files(build_asys), collapse = ", ")
+    )
+  }
+
+  for (filename in final_files) {
+    tab = read_tsv(paste0(build_asys, filename))
+    if (nrow(tab) < 1L) {
+      stop("Final reviewer table is empty: ", filename)
+    }
+  }
+
+  if (dir.exists(final_asys)) {
+    unlink(final_asys, recursive = TRUE, force = TRUE)
+  }
+
+  if (!file.rename(build_asys, final_asys)) {
+    stop("Could not promote validated temporary reviewer bundle to final/.")
+  }
 
   final_ready = TRUE
 }
 
-if (!final_ready) {
+if (!final_ready || !bundle_is_exact(final_asys)) {
   stop(
-    "Neither the complete source-output set nor an existing five-table final ",
-    "bundle is available. Recreate the relevant reviewer analyses first."
+    "A validated five-table final bundle is unavailable. Recreate the ",
+    "reviewer analysis outputs, then rerun this finalizer."
   )
 }
 
@@ -313,12 +380,9 @@ review_entries = list.files(
   all.files = FALSE
 )
 
-keep_paths = c(
-  sub("/$", "", final_asys),
-  paste0(review_asys, "review_output_manifest.tsv")
-)
+keep_name = basename(sub("/$", "", final_asys))
+stale = review_entries[basename(review_entries) != keep_name]
 
-stale = review_entries[!(review_entries %in% keep_paths)]
 if (length(stale) > 0L) {
   unlink(stale, recursive = TRUE, force = TRUE)
 }
@@ -328,25 +392,17 @@ if (dir.exists(review_imed)) {
 }
 
 ########################################
-# VALIDATE THE FINAL FIVE-TABLE BUNDLE #
+# FINAL MANIFEST                       #
 ########################################
-
-present = sort(list.files(final_asys, pattern = "\\.tsv$"))
-if (!identical(present, sort(final_files))) {
-  stop(
-    "Final reviewer bundle is not exactly five tables: ",
-    paste(present, collapse = ", ")
-  )
-}
 
 manifest = data.frame(
   table = final_files,
   purpose = c(
-    "Reviewer response on replicate averaging and missingness filtering",
-    "Reviewer response on representativeness of the 385 supported genes",
-    "Reviewer response on GO enrichment of interaction QTLs",
-    "Reviewer response on individual-study power and Figure 3 rediscovery",
-    "Reviewer response on dependence from shared segregants"
+    "Replicate averaging and missingness filtering",
+    "Representativeness of the 385 supported genes",
+    "GO enrichment of interaction QTLs",
+    "Individual-study power and Figure 3 rediscovery",
+    "Dependence from shared segregants"
   ),
   stringsAsFactors = FALSE
 )
@@ -359,8 +415,12 @@ write.table(
   row.names = FALSE
 )
 
+if (!bundle_is_exact(final_asys)) {
+  stop("Final five-table bundle changed unexpectedly during cleanup.")
+}
+
 cat("\nFINAL REVIEWER OUTPUT BUNDLE\n")
 cat("Substantive tables: 5\n")
 print(manifest, row.names = FALSE)
 cat("\nDirectory: ", final_asys, "\n", sep = "")
-cat("All superseded, validation-only, and intermediate review outputs removed.\n")
+cat("All nonfinal review outputs and intermediates removed.\n")
