@@ -90,7 +90,7 @@ write_workbook = function(sheets, filename) {
       x = dat,
       startRow = 1,
       startCol = 1,
-      tableName = paste0("T", sprintf("%02d", i)),
+      tableName = paste0("ReviewerTable", sprintf("%02d", i)),
       tableStyle = "TableStyleMedium2",
       withFilter = TRUE
     )
