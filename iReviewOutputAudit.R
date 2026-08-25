@@ -111,6 +111,17 @@ if (clean_outputs) {
 # BUILD OUTPUT MANIFEST #
 ########################
 
+manifest_path = paste0(
+  review_asys,
+  "review_output_manifest.tsv"
+)
+
+# Recreate the manifest itself on each audit rather than listing yesterday's
+# manifest as though it were an analysis output.
+if (file.exists(manifest_path)) {
+  unlink(manifest_path, force = TRUE)
+}
+
 review_tables = list.files(
   review_asys,
   pattern = "\\.(tsv|csv)$",
@@ -155,10 +166,6 @@ manifest = if (length(review_tables) > 0L) {
 
 manifest = manifest[order(manifest$path), , drop = FALSE]
 
-manifest_path = paste0(
-  review_asys,
-  "review_output_manifest.tsv"
-)
 write.table(
   manifest,
   file = manifest_path,
