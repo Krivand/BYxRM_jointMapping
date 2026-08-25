@@ -51,7 +51,8 @@ asys_allowed = list(
     "critical_r_power_table.tsv",
     "albert_reference_crossstudy.tsv",
     "albert_2018_power_benchmark.tsv",
-    "effect_curve_validation_summary.tsv"
+    "effect_curve_validation_summary.tsv",
+    "figure3_calibration"
   )
 )
 
