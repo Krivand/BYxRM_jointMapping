@@ -72,14 +72,8 @@ imed_allowed = list(
   )
 )
 
-legacy_directories = c(
-  paste0(review_asys, "power_pair_conditional/"),
-  paste0(review_asys, "power_reviewer_summary/"),
-  paste0(review_imed, "power_pair_conditional/"),
-  paste0(review_imed, "power_reviewer_summary/"),
-  paste0(review_imed, "power_effect_curve/"),
-  paste0(review_imed, "power/")
-)
+asys_allowed_directories = c(names(asys_allowed), "power")
+imed_allowed_directories = names(imed_allowed)
 
 ####################
 # CLEANING HELPERS #
@@ -113,13 +107,50 @@ clean_exact_directory = function(path, allowed) {
   invisible(NULL)
 }
 
+clean_top_level = function(root, allowed_directories) {
+
+  entries = list.files(
+    root,
+    full.names = TRUE,
+    recursive = FALSE,
+    all.files = FALSE
+  )
+  if (length(entries) == 0L) return(invisible(NULL))
+
+  is_directory = file.info(entries)$isdir
+
+  # Current review analyses write no direct analysis files at the review root.
+  # The manifest is recreated after cleanup, so all direct files here are stale.
+  direct_files = entries[!is_directory]
+  if (length(direct_files) > 0L) {
+    for (item in direct_files) remove_path(item)
+  }
+
+  directories = entries[is_directory]
+  stale_directories = directories[
+    !(basename(directories) %in% allowed_directories)
+  ]
+  if (length(stale_directories) > 0L) {
+    for (item in stale_directories) remove_path(item)
+  }
+
+  invisible(NULL)
+}
+
 ########################
 # REMOVE KNOWN STALE   #
 ########################
 
 if (clean_outputs) {
 
-  for (path in legacy_directories) remove_path(path)
+  clean_top_level(
+    review_asys,
+    asys_allowed_directories
+  )
+  clean_top_level(
+    review_imed,
+    imed_allowed_directories
+  )
 
   for (directory in names(asys_allowed)) {
     clean_exact_directory(
@@ -172,10 +203,6 @@ manifest_path = paste0(
   "review_output_manifest.tsv"
 )
 
-# Recreate the manifest itself on every audit rather than listing yesterday's
-# manifest as though it were an analysis result.
-if (file.exists(manifest_path)) unlink(manifest_path, force = TRUE)
-
 review_tables = list.files(
   review_asys,
   pattern = "\\.(tsv|csv)$",
@@ -226,7 +253,7 @@ write.table(
 cat("\nREVIEW OUTPUT AUDIT\n")
 cat("Review table root: ", review_asys, "\n", sep = "")
 cat("Tables found: ", nrow(manifest), "\n", sep = "")
-cat("Known stale paths removed: ", length(removed), "\n", sep = "")
+cat("Stale paths removed: ", length(removed), "\n", sep = "")
 
 if (length(removed) > 0L) {
   cat("\nRemoved:\n")
