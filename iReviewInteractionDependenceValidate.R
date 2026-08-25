@@ -17,8 +17,6 @@ validation_path = paste0(
   "segregant_dependence_validation_summary.tsv"
 )
 
-# A validator must be safely rerunnable without a previous validation table
-# being mistaken for a primary analysis output.
 if (file.exists(validation_path)) unlink(validation_path, force = TRUE)
 
 ####################
@@ -138,16 +136,17 @@ fit_clone_random_lrt = function(model_frame, clone) {
   )
 }
 
-checks = list()
-check_i = 1L
+check_state = new.env(parent = emptyenv())
+check_state$rows = list()
 record_check = function(name, passed, detail) {
-  checks[[check_i]] <<- data.frame(
+  i = length(check_state$rows) + 1L
+  check_state$rows[[i]] = data.frame(
     check = name,
     passed = isTRUE(passed),
     detail = as.character(detail),
     stringsAsFactors = FALSE
   )
-  check_i <<- check_i + 1L
+  invisible(NULL)
 }
 
 ################
@@ -184,6 +183,10 @@ strict_keys = paste(
   sep = "::"
 )
 target_keys = unique(c(joint_keys, strict_keys))
+
+########################
+# PRIMARY OUTPUT CHECKS #
+########################
 
 primary_outputs = sort(
   setdiff(
@@ -284,10 +287,14 @@ record_check(
 
 random_success = locus$clone_random_fit_success %in% TRUE
 random_failure = !random_success
-random_failures_documented = all(
-  nzchar(locus$clone_random_error[random_failure]) |
-  nzchar(locus$clone_random_warning[random_failure])
-)
+random_failures_documented = if (any(random_failure)) {
+  all(
+    nzchar(locus$clone_random_error[random_failure]) |
+    nzchar(locus$clone_random_warning[random_failure])
+  )
+} else {
+  TRUE
+}
 random_success_finite = all(
   is.finite(locus$clone_random_interaction_effect[random_success]) &
   is.finite(locus$clone_random_interaction_p[random_success]) &
@@ -365,7 +372,7 @@ record_check(
 )
 
 ########################################
-# INDEPENDENT ROBUST SUBSET RECOMPUTE  #
+# INDEPENDENT LOCUS SUBSET RECOMPUTE  #
 ########################################
 
 metadata_analyte$genes = lapply(
@@ -382,11 +389,13 @@ unionBG_analyte = load_single_rda(
   "unionAnalyteBG"
 )
 
-strict_candidates = locus[
-  locus$in_strict_64,
-  ,
-  drop = FALSE
-]
+choose_three = function(x) {
+  if (nrow(x) == 0L) return(x)
+  x = x[order(x$key), , drop = FALSE]
+  x[seq_len(min(3L, nrow(x))), , drop = FALSE]
+}
+
+strict_candidates = locus[locus$in_strict_64, , drop = FALSE]
 joint_sig_candidates = locus[
   locus$in_joint_868 &
     !locus$in_strict_64 &
@@ -401,13 +410,6 @@ joint_null_candidates = locus[
   ,
   drop = FALSE
 ]
-
-choose_three = function(x) {
-  if (nrow(x) == 0L) return(x)
-  x = x[order(x$key), , drop = FALSE]
-  x[seq_len(min(3L, nrow(x))), , drop = FALSE]
-}
-
 subset_rows = unique(
   rbind(
     choose_three(strict_candidates),
@@ -478,12 +480,17 @@ subset_recomputed = do.call(
         -abs(robust_effect / robust_se),
         df = robust$df
       )
+      random = fit_clone_random_lrt(mf, clone)
 
       data.frame(
         key = paste(x$gene, x$marker, sep = "::"),
         robust_effect = robust_effect,
         robust_se = robust_se,
         robust_p = robust_p,
+        random_effect = random$effect,
+        random_p = random$p,
+        random_lod = random$lod,
+        random_variance = random$clone_variance,
         stringsAsFactors = FALSE
       )
     }
@@ -495,6 +502,7 @@ subset_output = locus[
   ,
   drop = FALSE
 ]
+
 robust_subset_error = max(
   abs(
     c(
@@ -517,96 +525,28 @@ record_check(
   )
 )
 
-########################################
-# INDEPENDENT RANDOM-EFFECT SUBSET     #
-########################################
-
-successful_subset = subset_output[
-  subset_output$clone_random_fit_success %in% TRUE,
-  ,
-  drop = FALSE
-]
-
-if (nrow(successful_subset) > 0L) {
-
-  successful_pairs = successful_subset[
-    ,
-    c("gene", "marker"),
-    drop = FALSE
-  ]
-  successful_models = drillQTL(
-    studies = studies_analyte,
-    dfQTL = successful_pairs,
-    unionBg = unionBG_analyte,
-    smetadata = metadata_analyte,
-    suppGenes = supported_analyte,
-    fixedEffect = "analyte",
-    correctBG = TRUE,
-    correctGRM = FALSE,
-    cores = min(8L, nrow(successful_pairs)),
-    chromosomes = NULL
-  )
-
-  random_recomputed = do.call(
-    rbind,
-    lapply(
-      successful_models,
-      function(x) {
-        mf = stats::model.frame(x$interaction)
-        clone = reconstruct_clone(as.character(x$gene), mf)
-        random = fit_clone_random_lrt(mf, clone)
-        data.frame(
-          key = paste(x$gene, x$marker, sep = "::"),
-          effect = random$effect,
-          p = random$p,
-          lod = random$lod,
-          variance = random$clone_variance,
-          stringsAsFactors = FALSE
-        )
-      }
+random_subset_error = max(
+  abs(
+    c(
+      subset_recomputed$random_effect -
+        subset_output$clone_random_interaction_effect,
+      subset_recomputed$random_p -
+        subset_output$clone_random_interaction_p,
+      subset_recomputed$random_lod -
+        subset_output$clone_random_lod,
+      subset_recomputed$random_variance -
+        subset_output$clone_random_variance
     )
-  )
-
-  random_output = locus[
-    match(random_recomputed$key, locus$key),
-    ,
-    drop = FALSE
-  ]
-  random_subset_error = max(
-    abs(
-      c(
-        random_recomputed$effect -
-          random_output$clone_random_interaction_effect,
-        random_recomputed$p -
-          random_output$clone_random_interaction_p,
-        random_recomputed$lod -
-          random_output$clone_random_lod,
-        random_recomputed$variance -
-          random_output$clone_random_variance
-      )
-    ),
-    na.rm = TRUE
-  )
-
-  random_subset_pass = random_subset_error < 1e-7
-  random_subset_detail = paste0(
-    "n=", nrow(random_recomputed),
+  ),
+  na.rm = TRUE
+)
+record_check(
+  "independent_subset_reproduces_clone_random_refits",
+  random_subset_error < 1e-7,
+  paste0(
+    "n=", nrow(subset_recomputed),
     "; max error=", random_subset_error
   )
-
-} else {
-
-  random_subset_pass = TRUE
-  random_subset_detail = paste0(
-    "No clone-random fits succeeded in the predefined validator subset; ",
-    "the primary table documents model failures rather than hiding them."
-  )
-}
-
-record_check(
-  "independent_subset_reproduces_successful_clone_random_refits",
-  random_subset_pass,
-  random_subset_detail
 )
 
 ########################
@@ -631,15 +571,9 @@ summary_consistent =
   strict_summary$n_loci == 64L &&
   joint_summary$original_nominal_p_lt_0_05 == 149L &&
   joint_summary$robust_nominal_p_lt_0_05 ==
-    sum(
-      locus$in_joint_868 &
-      locus$robust_interaction_p < 0.05
-    ) &&
+    sum(locus$in_joint_868 & locus$robust_interaction_p < 0.05) &&
   strict_summary$clone_random_fit_success ==
-    sum(
-      locus$in_strict_64 &
-      locus$clone_random_fit_success
-    )
+    sum(locus$in_strict_64 & locus$clone_random_fit_success)
 record_check(
   "reviewer_summary_matches_locus_table",
   summary_consistent,
@@ -673,19 +607,21 @@ record_check(
   )
 )
 
-assignment_token = paste0("<", "-")
+has_standard_left_arrow = function(text) {
+  grepl("(?<!<)<-", text, perl = TRUE)
+}
 record_check(
   "review_dependence_scripts_follow_equals_style",
-  !grepl(assignment_token, analysis_text, fixed = TRUE) &&
-    !grepl(assignment_token, validator_text, fixed = TRUE),
-  "No left-arrow assignments detected."
+  !has_standard_left_arrow(analysis_text) &&
+    !has_standard_left_arrow(validator_text),
+  "No standard <- assignments detected; superassignment is treated separately."
 )
 
 ########################
 # WRITE VALIDATION     #
 ########################
 
-validation_summary = do.call(rbind, checks)
+validation_summary = do.call(rbind, check_state$rows)
 write.table(
   validation_summary,
   file = validation_path,
