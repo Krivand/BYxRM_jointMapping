@@ -33,11 +33,10 @@ asys_allowed = list(
     "missingness_filter_summary.tsv"
   ),
   interaction_dependence = c(
-    "clone_clustered_locus_results.tsv",
-    "clone_clustered_summary.tsv",
-    "clone_clustered_power.tsv",
-    "clone_clustered_prevalence.tsv",
-    "strict_qtl_clone_sensitivity.tsv"
+    "segregant_panel_overlap.tsv",
+    "segregant_dependence_locus_results.tsv",
+    "segregant_dependence_summary.tsv",
+    "segregant_dependence_validation_summary.tsv"
   ),
   interaction_power = c(
     "interaction_design_868.tsv",
@@ -63,10 +62,9 @@ figure3_allowed = c(
   "albert_figure3_observed_vs_power_lod4_5.png"
 )
 
+# Current interaction-dependence analysis is deliberately table-only. The old
+# RDS from the superseded power/prevalence implementation is stale.
 imed_allowed = list(
-  interaction_dependence = c(
-    "review_interaction_dependence.rds"
-  ),
   interaction_power = c(
     "review_interaction_power.rds"
   )
@@ -215,6 +213,7 @@ manifest = if (length(review_tables) > 0L) {
 
   info = file.info(review_tables)
   rel_path = substring(review_tables, nchar(review_asys) + 1L)
+  rel_path = sub("^/+", "", rel_path)
   top_directory = sub("/.*$", "", rel_path)
 
   data.frame(
