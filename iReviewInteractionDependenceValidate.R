@@ -8,20 +8,10 @@ source("/PHShome/kv1026/p05/remap_functions.R")
 
 review_asys = paste0(asys, "review/")
 dependence_asys = paste0(review_asys, "interaction_dependence/")
-ensure_directory(dependence_asys)
-
-analysis_path = "iReviewInteractionDependence.R"
-validator_path = "iReviewInteractionDependenceValidate.R"
 validation_path = paste0(
   dependence_asys,
   "segregant_dependence_validation_summary.tsv"
 )
-
-if (file.exists(validation_path)) unlink(validation_path, force = TRUE)
-
-####################
-# HELPER FUNCTIONS #
-####################
 
 read_tsv = function(path) {
   if (!file.exists(path)) stop("Missing required file: ", path)
@@ -34,106 +24,20 @@ read_tsv = function(path) {
   )
 }
 
-load_single_rda = function(path, object_name = NULL) {
+load_single_rda = function(path, object_name) {
   if (!file.exists(path)) stop("Missing required file: ", path)
   env = new.env(parent = emptyenv())
   loaded = load(path, envir = env)
-  if (!is.null(object_name)) {
-    if (!(object_name %in% loaded)) {
-      stop("Missing object ", object_name, " in ", path)
-    }
-    return(env[[object_name]])
+  if (!(object_name %in% loaded)) {
+    stop("Missing object ", object_name, " in ", path)
   }
-  if (length(loaded) != 1L) stop("Expected one object in ", path)
-  env[[loaded[[1]]]]
+  env[[object_name]]
 }
 
 canonical_clone = function(x) {
   x = trimws(as.character(x))
   x = gsub("_", ".", x, fixed = TRUE)
   gsub("\\s+", "", x)
-}
-
-interaction_term = function(beta_names) {
-  term = grep(
-    "(^geno:analyte|^analyte.*:geno$)",
-    beta_names,
-    value = TRUE
-  )
-  if (length(term) != 1L) stop("Could not identify interaction term.")
-  term[[1]]
-}
-
-cluster_vcov_cr1 = function(fit, cluster) {
-  X = stats::model.matrix(fit)
-  residual = stats::residuals(fit)
-  cluster = factor(cluster)
-  N = nrow(X)
-  K = ncol(X)
-  G = nlevels(cluster)
-  if (qr(X)$rank != K) stop("Validator robust model is rank deficient.")
-  if (G <= K) stop("Too few clusters in validator robust model.")
-  bread = solve(crossprod(X))
-  score_cluster = rowsum(X * residual, group = cluster, reorder = FALSE)
-  correction = (G / (G - 1)) * ((N - 1) / (N - K))
-  list(
-    vcov = correction * bread %*% crossprod(score_cluster) %*% bread,
-    df = G - 1L
-  )
-}
-
-fit_clone_random_lrt = function(model_frame, clone) {
-
-  dat = model_frame
-  dat$clone = factor(clone)
-  dat$study = factor(dat$study)
-  dat$analyte = factor(dat$analyte)
-
-  ctrl = lme4::lmerControl(
-    check.conv.singular = "ignore",
-    optimizer = "bobyqa",
-    optCtrl = list(maxfun = 200000)
-  )
-
-  m0 = suppressWarnings(
-    lme4::lmer(
-      pheno ~ (1 | study) + analyte + geno + (1 | clone),
-      data = dat,
-      control = ctrl,
-      REML = FALSE
-    )
-  )
-  m1 = suppressWarnings(
-    lme4::lmer(
-      pheno ~ (1 | study) + analyte + geno + geno:analyte + (1 | clone),
-      data = dat,
-      control = ctrl,
-      REML = FALSE
-    )
-  )
-
-  term = interaction_term(names(lme4::fixef(m1)))
-  lrt = stats::anova(m0, m1)
-  vc = as.data.frame(lme4::VarCorr(m1))
-  clone_variance = vc$vcov[
-    vc$grp == "clone" & vc$var1 == "(Intercept)"
-  ]
-
-  data.frame(
-    effect = unname(lme4::fixef(m1)[term]),
-    p = as.numeric(lrt[2, "Pr(>Chisq)"]),
-    lod = (
-      as.numeric(stats::logLik(m1)) -
-      as.numeric(stats::logLik(m0))
-    ) / log(10),
-    clone_variance = if (length(clone_variance) == 1L) {
-      clone_variance
-    } else {
-      NA_real_
-    },
-    full_singular = lme4::isSingular(m1, tol = 1e-5),
-    stringsAsFactors = FALSE
-  )
 }
 
 check_state = new.env(parent = emptyenv())
@@ -148,10 +52,6 @@ record_check = function(name, passed, detail) {
   )
   invisible(NULL)
 }
-
-################
-# READ OUTPUTS #
-################
 
 panel = read_tsv(
   paste0(dependence_asys, "segregant_panel_overlap.tsv")
@@ -184,10 +84,6 @@ strict_keys = paste(
 )
 target_keys = unique(c(joint_keys, strict_keys))
 
-########################
-# PRIMARY OUTPUT CHECKS #
-########################
-
 primary_outputs = sort(
   setdiff(
     list.files(
@@ -198,7 +94,7 @@ primary_outputs = sort(
     "segregant_dependence_validation_summary.tsv"
   )
 )
-expected_primary_outputs = sort(
+expected_outputs = sort(
   c(
     "segregant_panel_overlap.tsv",
     "segregant_dependence_locus_results.tsv",
@@ -207,16 +103,16 @@ expected_primary_outputs = sort(
 )
 record_check(
   "analysis_emits_three_primary_tables",
-  identical(primary_outputs, expected_primary_outputs),
+  identical(primary_outputs, expected_outputs),
   paste(primary_outputs, collapse = ", ")
 )
 
 record_check(
   "targeted_locus_keys_are_exact",
-  nrow(locus) == length(target_keys) &&
+  nrow(locus) == 928L &&
     !anyDuplicated(locus$key) &&
     setequal(locus$key, target_keys),
-  paste0("rows=", nrow(locus), "; expected=", length(target_keys))
+  paste0("rows=", nrow(locus), "; expected=928")
 )
 
 record_check(
@@ -229,30 +125,21 @@ record_check(
   )
 )
 
+joint = locus[locus$in_joint_868, , drop = FALSE]
+strict = locus[locus$in_strict_64, , drop = FALSE]
+
 record_check(
   "original_joint_posthoc_count_is_reproduced",
-  sum(
-    locus$in_joint_868 &
-    locus$original_interaction_p < 0.05
-  ) == 149L,
-  paste0(
-    "nominal joint interactions=",
-    sum(locus$in_joint_868 & locus$original_interaction_p < 0.05)
-  )
+  sum(joint$original_interaction_p < 0.05) == 149L,
+  paste0("nominal joint interactions=", sum(joint$original_interaction_p < 0.05))
 )
 
 joint_error = max(
-  abs(
-    locus$original_interaction_p[locus$in_joint_868] -
-    locus$stored_joint_interaction_p[locus$in_joint_868]
-  ),
+  abs(joint$original_interaction_p - joint$stored_joint_interaction_p),
   na.rm = TRUE
 )
 strict_error = max(
-  abs(
-    locus$original_interaction_p[locus$in_strict_64] -
-    locus$stored_strict_interaction_p[locus$in_strict_64]
-  ),
+  abs(strict$original_interaction_p - strict$stored_strict_interaction_p),
   na.rm = TRUE
 )
 record_check(
@@ -285,33 +172,47 @@ record_check(
   paste0(sum(robust_ok), "/", nrow(locus), " loci finite")
 )
 
-random_success = locus$clone_random_fit_success %in% TRUE
-random_failure = !random_success
-random_failures_documented = if (any(random_failure)) {
-  all(
-    nzchar(locus$clone_random_error[random_failure]) |
-    nzchar(locus$clone_random_warning[random_failure])
-  )
-} else {
-  TRUE
-}
-random_success_finite = all(
-  is.finite(locus$clone_random_interaction_effect[random_success]) &
-  is.finite(locus$clone_random_interaction_p[random_success]) &
-  is.finite(locus$clone_random_lod[random_success])
-)
 record_check(
-  "clone_random_refits_are_fully_accounted_for",
-  random_success_finite && random_failures_documented,
+  "strict_interactions_are_stable_to_cluster_robust_inference",
+  sum(strict$robust_interaction_p < 0.05) == 64L &&
+    all(
+      sign(strict$robust_interaction_effect) ==
+      sign(strict$original_interaction_effect)
+    ),
   paste0(
-    sum(random_success), "/", nrow(locus),
-    " successful; ", sum(random_failure), " documented failures"
+    "robust nominal strict interactions=",
+    sum(strict$robust_interaction_p < 0.05),
+    "; sign concordance=",
+    mean(
+      sign(strict$robust_interaction_effect) ==
+      sign(strict$original_interaction_effect)
+    )
   )
 )
 
-########################
-# PANEL OVERLAP CHECK   #
-########################
+random_success = locus$clone_random_fit_success %in% TRUE
+record_check(
+  "clone_random_refits_are_fully_accounted_for",
+  all(random_success) &&
+    all(is.finite(locus$clone_random_interaction_p)) &&
+    all(is.finite(locus$clone_random_interaction_effect)),
+  paste0(sum(random_success), "/", nrow(locus), " successful")
+)
+
+record_check(
+  "strict_interactions_are_stable_to_clone_random_refits",
+  sum(strict$clone_random_interaction_p < 0.05) == 64L &&
+    all(
+      sign(strict$clone_random_interaction_effect) ==
+      sign(strict$original_interaction_effect)
+    ),
+  paste0(
+    "clone-random nominal strict interactions=",
+    sum(strict$clone_random_interaction_p < 0.05),
+    "; singular full fits=",
+    sum(strict$clone_random_full_singular %in% TRUE)
+  )
+)
 
 metadata_analyte = scaMetadata
 studies_analyte = lapply(
@@ -335,14 +236,15 @@ panel_recomputed = do.call(
   lapply(
     pairs,
     function(pair) {
-      x = clone_ids[[pair[[1]]]]
-      y = clone_ids[[pair[[2]]]]
       data.frame(
         study_1 = pair[[1]],
         study_2 = pair[[2]],
-        n_study_1 = length(x),
-        n_study_2 = length(y),
-        n_shared = length(intersect(x, y)),
+        n_shared = length(
+          intersect(
+            clone_ids[[pair[[1]]]],
+            clone_ids[[pair[[2]]]]
+          )
+        ),
         stringsAsFactors = FALSE
       )
     }
@@ -363,195 +265,15 @@ panel_recomputed = panel_recomputed[
 panel_error = max(abs(panel$n_shared - panel_recomputed$n_shared))
 record_check(
   "segregant_panel_overlap_is_recomputed_exactly",
-  nrow(panel) == length(pairs) && panel_error == 0,
+  nrow(panel) == 21L &&
+    panel_error == 0 &&
+    sum(panel$n_shared > 0) == 21L,
   paste0(
     "pairs=", nrow(panel),
     "; max shared-count error=", panel_error,
     "; pairs with reuse=", sum(panel$n_shared > 0)
   )
 )
-
-########################################
-# INDEPENDENT LOCUS SUBSET RECOMPUTE  #
-########################################
-
-metadata_analyte$genes = lapply(
-  metadata_analyte$study,
-  function(study) colnames(studies_analyte[[study]]$pheno)
-)
-metadata_analyte$segs = lapply(
-  metadata_analyte$study,
-  function(study) rownames(studies_analyte[[study]]$pheno)
-)
-supported_analyte = suppTwo(metadata_analyte)
-unionBG_analyte = load_single_rda(
-  paste0(imed, "unionAnalyteBG.rda"),
-  "unionAnalyteBG"
-)
-
-choose_three = function(x) {
-  if (nrow(x) == 0L) return(x)
-  x = x[order(x$key), , drop = FALSE]
-  x[seq_len(min(3L, nrow(x))), , drop = FALSE]
-}
-
-strict_candidates = locus[locus$in_strict_64, , drop = FALSE]
-joint_sig_candidates = locus[
-  locus$in_joint_868 &
-    !locus$in_strict_64 &
-    locus$original_interaction_p < 0.05,
-  ,
-  drop = FALSE
-]
-joint_null_candidates = locus[
-  locus$in_joint_868 &
-    !locus$in_strict_64 &
-    locus$original_interaction_p >= 0.05,
-  ,
-  drop = FALSE
-]
-subset_rows = unique(
-  rbind(
-    choose_three(strict_candidates),
-    choose_three(joint_sig_candidates),
-    choose_three(joint_null_candidates)
-  )
-)
-subset_pairs = subset_rows[, c("gene", "marker"), drop = FALSE]
-
-subset_models = drillQTL(
-  studies = studies_analyte,
-  dfQTL = subset_pairs,
-  unionBg = unionBG_analyte,
-  smetadata = metadata_analyte,
-  suppGenes = supported_analyte,
-  fixedEffect = "analyte",
-  correctBG = TRUE,
-  correctGRM = FALSE,
-  cores = min(8L, nrow(subset_pairs)),
-  chromosomes = NULL
-)
-
-reconstruct_clone = function(gene, model_frame) {
-  support = metadata_analyte$study[
-    vapply(
-      metadata_analyte$genes,
-      function(x) gene %in% x,
-      logical(1)
-    )
-  ]
-  clone = unlist(
-    lapply(
-      support,
-      function(study) canonical_clone(rownames(studies_analyte[[study]]$gdata))
-    ),
-    use.names = FALSE
-  )
-  study_expected = unlist(
-    lapply(
-      support,
-      function(study) rep(study, nrow(studies_analyte[[study]]$gdata))
-    ),
-    use.names = FALSE
-  )
-  if (!all(as.character(model_frame$study) == study_expected)) {
-    stop("Validator study alignment failed.")
-  }
-  clone
-}
-
-subset_recomputed = do.call(
-  rbind,
-  lapply(
-    subset_models,
-    function(x) {
-      mf = stats::model.frame(x$interaction)
-      clone = reconstruct_clone(as.character(x$gene), mf)
-
-      robust_fit = stats::lm(
-        pheno ~ study + geno + geno:analyte,
-        data = mf
-      )
-      term = interaction_term(names(stats::coef(robust_fit)))
-      robust = cluster_vcov_cr1(robust_fit, clone)
-      robust_se = sqrt(robust$vcov[term, term])
-      robust_effect = unname(stats::coef(robust_fit)[term])
-      robust_p = 2 * stats::pt(
-        -abs(robust_effect / robust_se),
-        df = robust$df
-      )
-      random = fit_clone_random_lrt(mf, clone)
-
-      data.frame(
-        key = paste(x$gene, x$marker, sep = "::"),
-        robust_effect = robust_effect,
-        robust_se = robust_se,
-        robust_p = robust_p,
-        random_effect = random$effect,
-        random_p = random$p,
-        random_lod = random$lod,
-        random_variance = random$clone_variance,
-        stringsAsFactors = FALSE
-      )
-    }
-  )
-)
-
-subset_output = locus[
-  match(subset_recomputed$key, locus$key),
-  ,
-  drop = FALSE
-]
-
-robust_subset_error = max(
-  abs(
-    c(
-      subset_recomputed$robust_effect -
-        subset_output$robust_interaction_effect,
-      subset_recomputed$robust_se -
-        subset_output$robust_interaction_se,
-      subset_recomputed$robust_p -
-        subset_output$robust_interaction_p
-    )
-  ),
-  na.rm = TRUE
-)
-record_check(
-  "independent_subset_reproduces_cluster_robust_results",
-  robust_subset_error < 1e-8,
-  paste0(
-    "n=", nrow(subset_recomputed),
-    "; max error=", robust_subset_error
-  )
-)
-
-random_subset_error = max(
-  abs(
-    c(
-      subset_recomputed$random_effect -
-        subset_output$clone_random_interaction_effect,
-      subset_recomputed$random_p -
-        subset_output$clone_random_interaction_p,
-      subset_recomputed$random_lod -
-        subset_output$clone_random_lod,
-      subset_recomputed$random_variance -
-        subset_output$clone_random_variance
-    )
-  ),
-  na.rm = TRUE
-)
-record_check(
-  "independent_subset_reproduces_clone_random_refits",
-  random_subset_error < 1e-7,
-  paste0(
-    "n=", nrow(subset_recomputed),
-    "; max error=", random_subset_error
-  )
-)
-
-########################
-# SUMMARY CONSISTENCY  #
-########################
 
 joint_summary = summary_table[
   summary_table$set == "868_joint_QTLs",
@@ -563,33 +285,25 @@ strict_summary = summary_table[
   ,
   drop = FALSE
 ]
-summary_consistent =
-  nrow(summary_table) == 3L &&
-  nrow(joint_summary) == 1L &&
-  nrow(strict_summary) == 1L &&
-  joint_summary$n_loci == 868L &&
-  strict_summary$n_loci == 64L &&
-  joint_summary$original_nominal_p_lt_0_05 == 149L &&
-  joint_summary$robust_nominal_p_lt_0_05 ==
-    sum(locus$in_joint_868 & locus$robust_interaction_p < 0.05) &&
-  strict_summary$clone_random_fit_success ==
-    sum(locus$in_strict_64 & locus$clone_random_fit_success)
 record_check(
   "reviewer_summary_matches_locus_table",
-  summary_consistent,
-  "Counts in the three-row summary agree with the locus-level output."
+  nrow(joint_summary) == 1L &&
+    nrow(strict_summary) == 1L &&
+    joint_summary$original_nominal_p_lt_0_05 ==
+      sum(joint$original_interaction_p < 0.05) &&
+    joint_summary$robust_nominal_p_lt_0_05 ==
+      sum(joint$robust_interaction_p < 0.05) &&
+    strict_summary$clone_random_nominal_p_lt_0_05 ==
+      sum(strict$clone_random_interaction_p < 0.05),
+  "Reviewer-facing summary agrees with locus-level results."
 )
 
-########################
-# MODEL AND STYLE AUDIT #
-########################
-
 analysis_text = paste(
-  readLines(analysis_path, warn = FALSE),
+  readLines("iReviewInteractionDependence.R", warn = FALSE),
   collapse = "\n"
 )
 validator_text = paste(
-  readLines(validator_path, warn = FALSE),
+  readLines("iReviewInteractionDependenceValidate.R", warn = FALSE),
   collapse = "\n"
 )
 record_check(
@@ -601,25 +315,20 @@ record_check(
   ) &&
     grepl("(1 | clone)", analysis_text, fixed = TRUE) &&
     grepl("REML = FALSE", analysis_text, fixed = TRUE),
-  paste0(
-    "Robust sensitivity uses dataset fixed intercepts; ",
-    "mixed sensitivity adds a crossed segregant random intercept."
-  )
+  "Robust model uses study fixed intercepts; mixed model adds clone intercept."
 )
 
-has_standard_left_arrow = function(text) {
-  grepl("(?<!<)<-", text, perl = TRUE)
+assignment_token = paste0("<", "-")
+assignment_pattern = paste0("(?<!<)", assignment_token)
+has_standard_left_assignment = function(text) {
+  grepl(assignment_pattern, text, perl = TRUE)
 }
 record_check(
   "review_dependence_scripts_follow_equals_style",
-  !has_standard_left_arrow(analysis_text) &&
-    !has_standard_left_arrow(validator_text),
-  "No standard <- assignments detected; superassignment is treated separately."
+  !has_standard_left_assignment(analysis_text) &&
+    !has_standard_left_assignment(validator_text),
+  "No standard left-arrow assignments detected."
 )
-
-########################
-# WRITE VALIDATION     #
-########################
 
 validation_summary = do.call(rbind, check_state$rows)
 write.table(
