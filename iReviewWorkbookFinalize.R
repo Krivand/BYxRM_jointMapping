@@ -191,10 +191,30 @@ write_plain_workbook = function(sheets, filename) {
 # REGULAR DIRECT-SIMULATION GRID       #
 ########################################
 
-n_values = sort(unique(critical$n))
-smallest_n = min(n_values)
-median_n = n_values[which.min(abs(n_values - stats::median(n_values)))]
-largest_n = max(n_values)
+study_sizes = unique(
+  critical[
+    ,
+    c("study", "n"),
+    drop = FALSE
+  ]
+)
+
+if (
+  nrow(study_sizes) != 10L ||
+  anyDuplicated(study_sizes$study)
+) {
+  stop("Expected one sample size for each of the 10 studies.")
+}
+
+study_sizes = study_sizes[
+  order(study_sizes$n, study_sizes$study),
+  ,
+  drop = FALSE
+]
+
+smallest_n = min(study_sizes$n)
+median_n = stats::median(study_sizes$n)
+largest_n = max(study_sizes$n)
 
 size_table = data.frame(
   n = c(smallest_n, median_n, largest_n),
