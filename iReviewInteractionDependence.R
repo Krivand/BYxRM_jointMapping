@@ -1,1399 +1,734 @@
 ########################################
 ########################################
-# REVIEWER CLONE-DEPENDENCE ANALYSIS   #
+# REVIEWER SEGREGANT DEPENDENCE       #
+# TARGETED JOINT-QTL SENSITIVITY      #
 ########################################
 ########################################
 
-source(
-  "/PHShome/kv1026/p05/remap_functions.R"
-)
+source("/PHShome/kv1026/p05/remap_functions.R")
 
-review_asys =
-  paste0(
-    asys,
-    "review/"
-  )
+review_asys = paste0(asys, "review/")
+dependence_asys = paste0(review_asys, "interaction_dependence/")
+ensure_directory(review_asys)
+ensure_directory(dependence_asys)
 
-dependence_asys =
-  paste0(
-    review_asys,
-    "interaction_dependence/"
-  )
-
-dependence_imed =
-  paste0(
-    imed,
-    "review/interaction_dependence/"
-  )
-
-ensure_directory(
-  dependence_asys
-)
-
-ensure_directory(
-  dependence_imed
-)
-
-cores =
-  suppressWarnings(
-    as.integer(
-      Sys.getenv(
-        "SLURM_CPUS_PER_TASK",
-        "8"
-      )
+cores = suppressWarnings(
+  as.integer(
+    Sys.getenv(
+      "REVIEW_DEPENDENCE_CORES",
+      Sys.getenv("SLURM_CPUS_PER_TASK", "8")
     )
   )
+)
+if (is.na(cores) || cores < 1L) cores = 8L
 
-if (
-  is.na(cores) ||
-  cores < 1L
-) {
-  cores = 8L
+message("Shared-segregant sensitivity using ", cores, " worker(s).")
+
+####################
+# HELPER FUNCTIONS #
+####################
+
+load_single_rda = function(path, object_name = NULL) {
+
+  if (!file.exists(path)) stop("Missing required file: ", path)
+
+  env = new.env(parent = emptyenv())
+  loaded = load(path, envir = env)
+
+  if (!is.null(object_name)) {
+    if (!(object_name %in% loaded)) {
+      stop("Expected object '", object_name, "' in ", path)
+    }
+    return(env[[object_name]])
+  }
+
+  if (length(loaded) != 1L) {
+    stop(
+      "Expected one object in ", path,
+      "; found: ", paste(loaded, collapse = ", ")
+    )
+  }
+
+  env[[loaded[[1]]]]
 }
 
+write_tsv = function(x, filename) {
+  write.table(
+    x,
+    file = paste0(dependence_asys, filename),
+    sep = "\t",
+    quote = FALSE,
+    row.names = FALSE
+  )
+}
 
-########################################
-# LOAD JOINT-ANALYSIS OBJECTS          #
-########################################
-
-metadata_analyte =
-  scaMetadata
-
-studies_analyte =
-  lapply(
-    metadata_analyte$study,
-    function(study) {
-
-      env =
-        new.env(
-          parent = emptyenv()
-        )
-
-      load(
-        paste0(
-          imed,
-          study,
-          ".rda"
-        ),
-        envir = env
+parallel_lapply = function(X, FUN) {
+  if (.Platform$OS.type == "unix" && cores > 1L && length(X) > 1L) {
+    return(
+      parallel::mclapply(
+        X,
+        FUN,
+        mc.cores = min(cores, length(X)),
+        mc.preschedule = TRUE
       )
-
-      env[[study]]
-    }
-  )
-
-names(
-  studies_analyte
-) =
-  metadata_analyte$study
-
-metadata_analyte$genes =
-  lapply(
-    metadata_analyte$study,
-    function(study) {
-      colnames(
-        studies_analyte[[study]]$pheno
-      )
-    }
-  )
-
-metadata_analyte$segs =
-  lapply(
-    metadata_analyte$study,
-    function(study) {
-      rownames(
-        studies_analyte[[study]]$pheno
-      )
-    }
-  )
-
-supported_analyte =
-  suppTwo(
-    metadata_analyte
-  )
-
-load(
-  paste0(
-    imed,
-    "unionAnalyteBG.rda"
-  )
-)
-
-unionBG_analyte =
-  unionAnalyteBG
-
-rm(
-  unionAnalyteBG
-)
-
-load(
-  paste0(
-    imed,
-    "jBH_analyte_geno.rda"
-  )
-)
-
-load(
-  paste0(
-    imed,
-    "jBH_analyte_ixn.rda"
-  )
-)
-
-load(
-  paste0(
-    imed,
-    "qtls_aug_analyte_geno.rda"
-  )
-)
-
-load(
-  paste0(
-    imed,
-    "qtls_aug_analyte_ixn.rda"
-  )
-)
-
-
-########################################
-# COMBINE UNIQUE TARGETED LOCI         #
-########################################
-
-joint_keys =
-  paste(
-    jBH_analyte_geno$gene,
-    jBH_analyte_geno$marker,
-    sep = "::"
-  )
-
-strict_keys =
-  paste(
-    jBH_analyte_ixn$gene,
-    jBH_analyte_ixn$marker,
-    sep = "::"
-  )
-
-target_pairs =
-  unique(
-    rbind(
-      jBH_analyte_geno[
-        ,
-        c(
-          "gene",
-          "marker"
-        ),
-        drop = FALSE
-      ],
-      jBH_analyte_ixn[
-        ,
-        c(
-          "gene",
-          "marker"
-        ),
-        drop = FALSE
-      ]
     )
-  )
-
-message(
-  "Unique targeted loci: ",
-  nrow(
-    target_pairs
-  )
-)
-
-
-########################################
-# TARGETED MODEL REFITS                #
-########################################
-
-message(
-  "Refitting known QTLs for clone-dependence sensitivity..."
-)
-
-modelQTL =
-  drillQTL(
-    studies =
-      studies_analyte,
-    dfQTL =
-      target_pairs,
-    unionBg =
-      unionBG_analyte,
-    smetadata =
-      metadata_analyte,
-    suppGenes =
-      supported_analyte,
-    fixedEffect =
-      "analyte",
-    correctBG =
-      TRUE,
-    correctGRM =
-      FALSE,
-    cores =
-      cores,
-    chromosomes =
-      NULL
-  )
-
-
-########################################
-# CLONE-ID RECONSTRUCTION              #
-########################################
+  }
+  lapply(X, FUN)
+}
 
 canonical_clone = function(x) {
+  x = trimws(as.character(x))
+  x = gsub("_", ".", x, fixed = TRUE)
+  gsub("\\s+", "", x)
+}
 
-  x =
-    trimws(
-      as.character(x)
+interaction_term = function(beta_names) {
+  term = grep(
+    "(^geno:analyte|^analyte.*:geno$)",
+    beta_names,
+    value = TRUE
+  )
+  if (length(term) != 1L) {
+    stop(
+      "Expected one genotype-by-analyte coefficient; found: ",
+      paste(term, collapse = ", ")
     )
+  }
+  term[[1]]
+}
 
-  x =
-    gsub(
-      "_",
-      ".",
-      x,
-      fixed = TRUE
-    )
+cluster_vcov_cr1 = function(fit, cluster) {
 
-  gsub(
-    "\\s+",
-    "",
-    x
+  X = stats::model.matrix(fit)
+  residual = stats::residuals(fit)
+  cluster = factor(cluster)
+
+  N = nrow(X)
+  K = ncol(X)
+  G = nlevels(cluster)
+
+  if (qr(X)$rank != K) stop("Cluster-robust fixed-effect model is rank deficient.")
+  if (G <= K) stop("Too few segregant clusters for CR1 covariance.")
+
+  bread = solve(crossprod(X))
+  score = X * residual
+  score_cluster = rowsum(score, group = cluster, reorder = FALSE)
+  meat = crossprod(score_cluster)
+  correction = (G / (G - 1)) * ((N - 1) / (N - K))
+  vcov = correction * bread %*% meat %*% bread
+
+  list(
+    vcov = vcov,
+    n_clusters = G,
+    df = G - 1L
   )
 }
 
+fit_clone_random_lrt = function(model_frame, clone) {
 
-reconstruct_rows = function(
-  gene,
-  marker,
-  model_frame
-) {
+  dat = model_frame
+  dat$clone = factor(clone)
+  dat$study = factor(dat$study)
+  dat$analyte = factor(dat$analyte)
 
-  support =
-    metadata_analyte$study[
-      vapply(
-        metadata_analyte$genes,
-        function(x) {
-          gene %in% x
-        },
-        logical(1)
+  f0 = stats::as.formula(
+    "pheno ~ (1 | study) + analyte + geno + (1 | clone)"
+  )
+  f1 = stats::as.formula(
+    "pheno ~ (1 | study) + analyte + geno + geno:analyte + (1 | clone)"
+  )
+
+  ctrl = lme4::lmerControl(
+    check.conv.singular = "ignore",
+    optimizer = "bobyqa",
+    optCtrl = list(maxfun = 200000)
+  )
+
+  warning_text = character(0)
+
+  fit_result = tryCatch(
+    withCallingHandlers(
+      {
+        m0 = lme4::lmer(
+          f0,
+          data = dat,
+          control = ctrl,
+          REML = FALSE
+        )
+        m1 = lme4::lmer(
+          f1,
+          data = dat,
+          control = ctrl,
+          REML = FALSE
+        )
+        list(m0 = m0, m1 = m1)
+      },
+      warning = function(w) {
+        warning_text <<- c(warning_text, conditionMessage(w))
+        invokeRestart("muffleWarning")
+      }
+    ),
+    error = function(e) e
+  )
+
+  if (inherits(fit_result, "error")) {
+    return(
+      data.frame(
+        clone_random_fit_success = FALSE,
+        clone_random_warning = paste(unique(warning_text), collapse = " | "),
+        clone_random_error = conditionMessage(fit_result),
+        clone_random_interaction_effect = NA_real_,
+        clone_random_interaction_p = NA_real_,
+        clone_random_lod = NA_real_,
+        clone_random_null_singular = NA,
+        clone_random_full_singular = NA,
+        clone_random_variance = NA_real_,
+        clone_random_study_variance = NA_real_,
+        stringsAsFactors = FALSE
       )
-    ]
-
-  support =
-    support[
-      support %in%
-      names(
-        studies_analyte
-      )
-    ]
-
-  study_expected =
-    unlist(
-      lapply(
-        support,
-        function(study) {
-          rep(
-            study,
-            nrow(
-              studies_analyte[[study]]$gdata
-            )
-          )
-        }
-      ),
-      use.names = FALSE
-    )
-
-  clone_expected =
-    unlist(
-      lapply(
-        support,
-        function(study) {
-          canonical_clone(
-            rownames(
-              studies_analyte[[study]]$gdata
-            )
-          )
-        }
-      ),
-      use.names = FALSE
-    )
-
-  genotype_raw =
-    unlist(
-      lapply(
-        support,
-        function(study) {
-          studies_analyte[[study]]$gdata[
-            ,
-            marker
-          ]
-        }
-      ),
-      use.names = FALSE
-    )
-
-  genotype_expected =
-    as.numeric(
-      scale(
-        genotype_raw
-      )
-    )
-
-  if (
-    length(study_expected) !=
-    nrow(model_frame)
-  ) {
-    stop(
-      "Row-count mismatch for ",
-      gene,
-      " / ",
-      marker,
-      ": reconstructed ",
-      length(study_expected),
-      ", model ",
-      nrow(model_frame)
     )
   }
 
-  study_match =
-    all(
-      as.character(
-        model_frame$study
-      ) ==
-      study_expected
-    )
+  m0 = fit_result$m0
+  m1 = fit_result$m1
+  term = interaction_term(names(lme4::fixef(m1)))
 
-  genotype_difference =
-    max(
-      abs(
-        as.numeric(
-          model_frame$geno
-        ) -
-        genotype_expected
-      ),
-      na.rm = TRUE
-    )
+  lrt = tryCatch(
+    stats::anova(m0, m1),
+    error = function(e) NULL
+  )
 
-  if (!study_match) {
+  p = if (is.null(lrt)) NA_real_ else as.numeric(lrt[2, "Pr(>Chisq)"])
+  lod = (
+    as.numeric(stats::logLik(m1)) -
+    as.numeric(stats::logLik(m0))
+  ) / log(10)
+
+  vc = as.data.frame(lme4::VarCorr(m1))
+  clone_variance = vc$vcov[vc$grp == "clone" & vc$var1 == "(Intercept)"]
+  study_variance = vc$vcov[vc$grp == "study" & vc$var1 == "(Intercept)"]
+
+  data.frame(
+    clone_random_fit_success = is.finite(p),
+    clone_random_warning = paste(unique(warning_text), collapse = " | "),
+    clone_random_error = if (is.finite(p)) "" else "LRT p-value was not finite",
+    clone_random_interaction_effect = unname(lme4::fixef(m1)[term]),
+    clone_random_interaction_p = p,
+    clone_random_lod = lod,
+    clone_random_null_singular = lme4::isSingular(m0, tol = 1e-5),
+    clone_random_full_singular = lme4::isSingular(m1, tol = 1e-5),
+    clone_random_variance = if (length(clone_variance) == 1L) clone_variance else NA_real_,
+    clone_random_study_variance = if (length(study_variance) == 1L) study_variance else NA_real_,
+    stringsAsFactors = FALSE
+  )
+}
+
+########################
+# LOAD JOINT DATA      #
+########################
+
+metadata_analyte = scaMetadata
+
+studies_analyte = lapply(
+  metadata_analyte$study,
+  function(study) {
+    load_single_rda(
+      paste0(imed, study, ".rda"),
+      object_name = study
+    )
+  }
+)
+names(studies_analyte) = metadata_analyte$study
+
+metadata_analyte$genes = lapply(
+  metadata_analyte$study,
+  function(study) colnames(studies_analyte[[study]]$pheno)
+)
+metadata_analyte$segs = lapply(
+  metadata_analyte$study,
+  function(study) rownames(studies_analyte[[study]]$pheno)
+)
+
+supported_analyte = suppTwo(metadata_analyte)
+unionBG_analyte = load_single_rda(
+  paste0(imed, "unionAnalyteBG.rda"),
+  object_name = "unionAnalyteBG"
+)
+
+jBH_analyte_geno = load_single_rda(
+  paste0(imed, "jBH_analyte_geno.rda"),
+  object_name = "jBH_analyte_geno"
+)
+jBH_analyte_ixn = load_single_rda(
+  paste0(imed, "jBH_analyte_ixn.rda"),
+  object_name = "jBH_analyte_ixn"
+)
+qtls_aug_analyte_geno = load_single_rda(
+  paste0(imed, "qtls_aug_analyte_geno.rda"),
+  object_name = "qtls_aug_analyte_geno"
+)
+qtls_aug_analyte_ixn = load_single_rda(
+  paste0(imed, "qtls_aug_analyte_ixn.rda"),
+  object_name = "qtls_aug_analyte_ixn"
+)
+
+if (nrow(jBH_analyte_geno) != 868L) {
+  stop("Expected 868 joint QTLs; found ", nrow(jBH_analyte_geno), ".")
+}
+if (nrow(jBH_analyte_ixn) != 64L) {
+  stop("Expected 64 strict interaction QTLs; found ", nrow(jBH_analyte_ixn), ".")
+}
+
+joint_keys = paste(jBH_analyte_geno$gene, jBH_analyte_geno$marker, sep = "::")
+strict_keys = paste(jBH_analyte_ixn$gene, jBH_analyte_ixn$marker, sep = "::")
+
+target_pairs = unique(
+  rbind(
+    jBH_analyte_geno[, c("gene", "marker"), drop = FALSE],
+    jBH_analyte_ixn[, c("gene", "marker"), drop = FALSE]
+  )
+)
+target_pairs$gene = as.character(target_pairs$gene)
+target_pairs$marker = as.character(target_pairs$marker)
+
+target_keys = paste(target_pairs$gene, target_pairs$marker, sep = "::")
+message("Targeted loci: ", nrow(target_pairs))
+
+########################################
+# DOCUMENT SEGREGANT REUSE             #
+########################################
+
+study_clone_ids = lapply(
+  studies_analyte,
+  function(study) canonical_clone(rownames(study$gdata))
+)
+
+if (any(vapply(study_clone_ids, anyDuplicated, integer(1)) > 0L)) {
+  stop("At least one joint-analysis dataset has duplicated canonical segregant IDs.")
+}
+
+pair_index = utils::combn(names(study_clone_ids), 2, simplify = FALSE)
+segregant_panel_overlap = do.call(
+  rbind,
+  lapply(
+    pair_index,
+    function(pair) {
+      x = study_clone_ids[[pair[[1]]]]
+      y = study_clone_ids[[pair[[2]]]]
+      shared = intersect(x, y)
+      data.frame(
+        study_1 = pair[[1]],
+        study_2 = pair[[2]],
+        n_study_1 = length(x),
+        n_study_2 = length(y),
+        n_shared = length(shared),
+        fraction_study_1_shared = length(shared) / length(x),
+        fraction_study_2_shared = length(shared) / length(y),
+        stringsAsFactors = FALSE
+      )
+    }
+  )
+)
+
+if (max(segregant_panel_overlap$n_shared) == 0L) {
+  stop("No segregant reuse detected among the joint-analysis datasets.")
+}
+
+########################################
+# REFIT ORIGINAL TARGETED LOCI         #
+########################################
+
+message("Refitting targeted loci with the original joint model...")
+
+modelQTL = drillQTL(
+  studies = studies_analyte,
+  dfQTL = target_pairs,
+  unionBg = unionBG_analyte,
+  smetadata = metadata_analyte,
+  suppGenes = supported_analyte,
+  fixedEffect = "analyte",
+  correctBG = TRUE,
+  correctGRM = FALSE,
+  cores = cores,
+  chromosomes = NULL
+)
+
+if (length(modelQTL) != nrow(target_pairs)) {
+  stop(
+    "Expected ", nrow(target_pairs),
+    " targeted refits; received ", length(modelQTL), "."
+  )
+}
+
+########################################
+# RECONSTRUCT SEGREGANT IDs PER MODEL  #
+########################################
+
+reconstruct_rows = function(gene, marker, model_frame) {
+
+  support = metadata_analyte$study[
+    vapply(
+      metadata_analyte$genes,
+      function(x) gene %in% x,
+      logical(1)
+    )
+  ]
+  support = support[support %in% names(studies_analyte)]
+
+  study_expected = unlist(
+    lapply(
+      support,
+      function(study) {
+        rep(study, nrow(studies_analyte[[study]]$gdata))
+      }
+    ),
+    use.names = FALSE
+  )
+
+  clone_expected = unlist(
+    lapply(
+      support,
+      function(study) {
+        canonical_clone(rownames(studies_analyte[[study]]$gdata))
+      }
+    ),
+    use.names = FALSE
+  )
+
+  genotype_raw = unlist(
+    lapply(
+      support,
+      function(study) studies_analyte[[study]]$gdata[, marker]
+    ),
+    use.names = FALSE
+  )
+  genotype_expected = as.numeric(scale(genotype_raw))
+
+  if (length(study_expected) != nrow(model_frame)) {
     stop(
-      "Study-order mismatch for ",
-      gene,
-      " / ",
-      marker
+      "Row-count mismatch for ", gene, " / ", marker,
+      ": reconstructed ", length(study_expected),
+      ", model ", nrow(model_frame)
     )
   }
 
-  if (
-    !is.finite(
-      genotype_difference
-    ) ||
-    genotype_difference >
-    1e-8
-  ) {
+  if (!all(as.character(model_frame$study) == study_expected)) {
+    stop("Study-order mismatch for ", gene, " / ", marker, ".")
+  }
+
+  genotype_difference = max(
+    abs(as.numeric(model_frame$geno) - genotype_expected),
+    na.rm = TRUE
+  )
+
+  if (!is.finite(genotype_difference) || genotype_difference > 1e-8) {
     stop(
-      "Genotype-order mismatch for ",
-      gene,
-      " / ",
-      marker,
-      "; maximum difference = ",
-      genotype_difference
+      "Genotype-order mismatch for ", gene, " / ", marker,
+      "; maximum difference = ", genotype_difference
     )
   }
 
   list(
     support = support,
-    study =
-      study_expected,
-    clone =
-      clone_expected,
-    genotype_difference =
-      genotype_difference
+    clone = clone_expected,
+    genotype_difference = genotype_difference
   )
 }
 
-
 ########################################
-# CR1 CLUSTER-ROBUST COVARIANCE        #
+# LOCUS-LEVEL SENSITIVITY              #
 ########################################
 
-cluster_vcov_cr1 = function(
-  fit,
-  cluster
-) {
+extract_locus = function(x) {
 
-  X =
-    stats::model.matrix(
-      fit
-    )
+  gene = as.character(x$gene)
+  marker = as.character(x$marker)
+  key = paste(gene, marker, sep = "::")
 
-  residual =
-    stats::residuals(
-      fit
-    )
-
-  cluster =
-    factor(
-      cluster
-    )
-
-  N =
-    nrow(X)
-
-  K =
-    ncol(X)
-
-  G =
-    nlevels(
-      cluster
-    )
-
-  if (G <= K) {
-    stop(
-      "Too few clusters for CR1 covariance."
-    )
+  m = x$interaction
+  if (is.null(m) || !inherits(m, "lmerMod")) {
+    stop("Missing original interaction model for ", key, ".")
   }
 
-  bread =
-    solve(
-      crossprod(X)
-    )
+  mf = stats::model.frame(m)
+  alignment = reconstruct_rows(gene, marker, mf)
+  clone = alignment$clone
 
-  score =
-    X *
-    residual
+  clone_counts = table(clone)
+  n_clone_clusters = length(clone_counts)
+  n_reused_clones = sum(clone_counts > 1L)
 
-  score_cluster =
-    rowsum(
-      score,
-      group = cluster,
-      reorder = FALSE
-    )
+  original_beta = lme4::fixef(m)
+  original_term = interaction_term(names(original_beta))
+  original_se = sqrt(diag(stats::vcov(m)))[original_term]
 
-  meat =
-    crossprod(
-      score_cluster
-    )
-
-  correction =
-    (
-      G /
-      (G - 1)
-    ) *
-    (
-      (N - 1) /
-      (N - K)
-    )
-
-  vcov =
-    correction *
-    bread %*%
-    meat %*%
-    bread
-
-  list(
-    vcov = vcov,
-    n_clusters = G,
-    df = G - 1
+  robust_fit = stats::lm(
+    pheno ~ study + geno + geno:analyte,
+    data = mf
   )
-}
+  robust_term = interaction_term(names(stats::coef(robust_fit)))
+  robust = cluster_vcov_cr1(robust_fit, clone)
+  robust_se = sqrt(robust$vcov[robust_term, robust_term])
+  robust_effect = unname(stats::coef(robust_fit)[robust_term])
+  robust_t = robust_effect / robust_se
+  robust_p = 2 * stats::pt(
+    -abs(robust_t),
+    df = robust$df
+  )
 
-
-########################################
-# EXTRACT LOCUS-SPECIFIC SENSITIVITY   #
-########################################
-
-extract_clustered = function(x) {
-
-  gene =
-    as.character(
-      x$gene
-    )
-
-  marker =
-    as.character(
-      x$marker
-    )
-
-  key =
-    paste(
-      gene,
-      marker,
-      sep = "::"
-    )
-
-  m =
-    x$interaction
-
-  if (
-    is.null(m) ||
-    !inherits(
-      m,
-      "lmerMod"
-    )
-  ) {
-    stop(
-      "Missing interaction model for ",
-      key
-    )
-  }
-
-  mf =
-    stats::model.frame(
-      m
-    )
-
-  alignment =
-    reconstruct_rows(
-      gene = gene,
-      marker = marker,
-      model_frame = mf
-    )
-
-  lm_fit =
-    stats::lm(
-      pheno ~
-        analyte +
-        geno +
-        geno:analyte,
-      data = mf
-    )
-
-  lm_beta =
-    stats::coef(
-      lm_fit
-    )
-
-  lmer_beta =
-    lme4::fixef(
-      m
-    )
-
-  ixn_term =
-    grep(
-      "(^geno:analyte|^analyte.*:geno$)",
-      names(
-        lm_beta
-      ),
-      value = TRUE
-    )
-
-  if (
-    length(ixn_term) != 1L
-  ) {
-    stop(
-      "Could not identify one interaction term for ",
-      key
-    )
-  }
-
-  ixn_term =
-    ixn_term[[1]]
-
-  lmer_ixn_term =
-    grep(
-      "(^geno:analyte|^analyte.*:geno$)",
-      names(
-        lmer_beta
-      ),
-      value = TRUE
-    )
-
-  if (
-    length(lmer_ixn_term) != 1L
-  ) {
-    stop(
-      "Could not identify lmer interaction term for ",
-      key
-    )
-  }
-
-  lmer_ixn_term =
-    lmer_ixn_term[[1]]
-
-  beta_lm =
-    unname(
-      lm_beta[
-        ixn_term
-      ]
-    )
-
-  beta_lmer =
-    unname(
-      lmer_beta[
-        lmer_ixn_term
-      ]
-    )
-
-  ordinary_lm_se =
-    summary(
-      lm_fit
-    )$coefficients[
-      ixn_term,
-      "Std. Error"
-    ]
-
-  lmer_vcov =
-    as.matrix(
-      stats::vcov(
-        m
-      )
-    )
-
-  lmer_se =
-    sqrt(
-      lmer_vcov[
-        lmer_ixn_term,
-        lmer_ixn_term
-      ]
-    )
-
-  clustered =
-    cluster_vcov_cr1(
-      fit = lm_fit,
-      cluster =
-        alignment$clone
-    )
-
-  clustered_se =
-    sqrt(
-      clustered$vcov[
-        ixn_term,
-        ixn_term
-      ]
-    )
-
-  clustered_t =
-    beta_lm /
-    clustered_se
-
-  clustered_p =
-    2 *
-    stats::pt(
-      -abs(
-        clustered_t
-      ),
-      df =
-        clustered$df
-    )
-
-  random_effect =
-    as.data.frame(
-      lme4::VarCorr(
-        m
-      )
-    )
-
-  study_variance =
-    random_effect$vcov[
-      random_effect$grp ==
-      "study"
-    ]
-
-  if (
-    length(study_variance) == 0L
-  ) {
-    study_variance =
-      NA_real_
-  } else {
-    study_variance =
-      study_variance[[1]]
-  }
+  clone_random = fit_clone_random_lrt(mf, clone)
 
   data.frame(
     gene = gene,
     marker = marker,
-    in_joint =
-      key %in%
-      joint_keys,
-    in_strict =
-      key %in%
-      strict_keys,
-    n_observations =
-      nrow(mf),
-    n_studies =
-      length(
-        alignment$support
-      ),
-    n_clone_clusters =
-      clustered$n_clusters,
-    cluster_df =
-      clustered$df,
-    maximum_genotype_alignment_difference =
-      alignment$genotype_difference,
-    study_random_variance =
-      study_variance,
-    interaction_effect_lmer =
-      beta_lmer,
-    interaction_effect_lm =
-      beta_lm,
-    effect_difference =
-      beta_lm -
-      beta_lmer,
-    lmer_se =
-      lmer_se,
-    ordinary_lm_se =
-      ordinary_lm_se,
-    clustered_se =
-      clustered_se,
-    clustered_se_ratio =
-      clustered_se /
-      lmer_se,
-    clustered_t =
-      clustered_t,
-    clustered_p =
-      clustered_p,
-    original_targeted_lrt_p =
-      as.numeric(
-        x$interaction_pval
-      ),
-    stringsAsFactors = FALSE
+    key = key,
+    in_joint_868 = key %in% joint_keys,
+    in_strict_64 = key %in% strict_keys,
+    n_observations = nrow(mf),
+    n_studies = length(alignment$support),
+    n_clone_clusters = n_clone_clusters,
+    n_reused_clones = n_reused_clones,
+    reused_clone_fraction = n_reused_clones / n_clone_clusters,
+    maximum_observations_per_clone = max(clone_counts),
+    maximum_genotype_alignment_difference = alignment$genotype_difference,
+    original_interaction_effect = unname(original_beta[original_term]),
+    original_interaction_se = unname(original_se),
+    original_interaction_p = as.numeric(x$interaction_pval),
+    original_model_singular = lme4::isSingular(m, tol = 1e-5),
+    robust_interaction_effect = robust_effect,
+    robust_interaction_se = robust_se,
+    robust_interaction_t = robust_t,
+    robust_interaction_df = robust$df,
+    robust_interaction_p = robust_p,
+    robust_to_original_se_ratio = robust_se / original_se,
+    clone_random,
+    stringsAsFactors = FALSE,
+    check.names = FALSE
   )
 }
 
+message("Calculating cluster-robust and clone-random-effect sensitivities...")
 
-message(
-  "Calculating clone-clustered covariance estimates..."
-)
+locus_list = parallel_lapply(modelQTL, extract_locus)
+segregant_dependence_locus_results = do.call(rbind, locus_list)
+rownames(segregant_dependence_locus_results) = NULL
 
-clustered_results =
-  do.call(
-    rbind,
-    lapply(
-      modelQTL,
-      extract_clustered
-    )
-  )
-
+if (anyDuplicated(segregant_dependence_locus_results$key)) {
+  stop("Targeted dependence output contains duplicated gene-marker keys.")
+}
+if (!setequal(segregant_dependence_locus_results$key, target_keys)) {
+  stop("Targeted dependence output does not contain the exact requested loci.")
+}
 
 ########################################
-# MERGE STORED POST-HOC RESULTS        #
+# VERIFY ORIGINAL REFITS               #
 ########################################
 
-joint_stored =
-  qtls_aug_analyte_geno[
-    ,
-    c(
-      "gene",
-      "marker",
-      "interaction_effect",
-      "interaction_pval"
-    ),
-    drop = FALSE
-  ]
-
-names(
-  joint_stored
-)[
-  names(
-    joint_stored
-  ) ==
-  "interaction_effect"
-] =
-  "stored_joint_interaction_effect"
-
-names(
-  joint_stored
-)[
-  names(
-    joint_stored
-  ) ==
-  "interaction_pval"
-] =
+joint_reference = qtls_aug_analyte_geno[
+  ,
+  c("gene", "marker", "interaction_effect", "interaction_pval"),
+  drop = FALSE
+]
+names(joint_reference)[3:4] = c(
+  "stored_joint_interaction_effect",
   "stored_joint_interaction_p"
+)
 
-clustered_results =
-  merge(
-    clustered_results,
-    joint_stored,
-    by = c(
-      "gene",
-      "marker"
-    ),
-    all.x = TRUE,
-    sort = FALSE
+strict_reference = qtls_aug_analyte_ixn[
+  ,
+  c("gene", "marker", "interaction_effect", "interaction_pval"),
+  drop = FALSE
+]
+names(strict_reference)[3:4] = c(
+  "stored_strict_interaction_effect",
+  "stored_strict_interaction_p"
+)
+
+segregant_dependence_locus_results = merge(
+  segregant_dependence_locus_results,
+  joint_reference,
+  by = c("gene", "marker"),
+  all.x = TRUE,
+  sort = FALSE
+)
+segregant_dependence_locus_results = merge(
+  segregant_dependence_locus_results,
+  strict_reference,
+  by = c("gene", "marker"),
+  all.x = TRUE,
+  sort = FALSE
+)
+segregant_dependence_locus_results$key = paste(
+  segregant_dependence_locus_results$gene,
+  segregant_dependence_locus_results$marker,
+  sep = "::"
+)
+segregant_dependence_locus_results = segregant_dependence_locus_results[
+  match(target_keys, segregant_dependence_locus_results$key),
+  ,
+  drop = FALSE
+]
+
+joint_check = segregant_dependence_locus_results[
+  segregant_dependence_locus_results$in_joint_868,
+  ,
+  drop = FALSE
+]
+strict_check = segregant_dependence_locus_results[
+  segregant_dependence_locus_results$in_strict_64,
+  ,
+  drop = FALSE
+]
+
+joint_p_error = max(
+  abs(joint_check$original_interaction_p - joint_check$stored_joint_interaction_p),
+  na.rm = TRUE
+)
+strict_p_error = max(
+  abs(strict_check$original_interaction_p - strict_check$stored_strict_interaction_p),
+  na.rm = TRUE
+)
+
+if (joint_p_error > 1e-8 || strict_p_error > 1e-8) {
+  stop(
+    "Targeted refits do not reproduce stored interaction p-values. ",
+    "Joint max error = ", joint_p_error,
+    "; strict max error = ", strict_p_error, "."
   )
-
-
-########################################
-# SUMMARY OF ALIGNMENT AND SE INFLATION#
-########################################
-
-joint_results =
-  clustered_results[
-    clustered_results$in_joint,
-    ,
-    drop = FALSE
-  ]
-
-strict_results =
-  clustered_results[
-    clustered_results$in_strict,
-    ,
-    drop = FALSE
-  ]
-
-dependence_summary =
-  data.frame(
-    set =
-      c(
-        "868_joint_QTLs",
-        "64_strict_interaction_QTLs"
-      ),
-    n_loci =
-      c(
-        nrow(
-          joint_results
-        ),
-        nrow(
-          strict_results
-        )
-      ),
-    minimum_clone_clusters =
-      c(
-        min(
-          joint_results$n_clone_clusters
-        ),
-        min(
-          strict_results$n_clone_clusters
-        )
-      ),
-    median_clone_clusters =
-      c(
-        stats::median(
-          joint_results$n_clone_clusters
-        ),
-        stats::median(
-          strict_results$n_clone_clusters
-        )
-      ),
-    maximum_clone_clusters =
-      c(
-        max(
-          joint_results$n_clone_clusters
-        ),
-        max(
-          strict_results$n_clone_clusters
-        )
-      ),
-    median_lmer_se =
-      c(
-        stats::median(
-          joint_results$lmer_se
-        ),
-        stats::median(
-          strict_results$lmer_se
-        )
-      ),
-    median_clustered_se =
-      c(
-        stats::median(
-          joint_results$clustered_se
-        ),
-        stats::median(
-          strict_results$clustered_se
-        )
-      ),
-    median_se_ratio =
-      c(
-        stats::median(
-          joint_results$clustered_se_ratio
-        ),
-        stats::median(
-          strict_results$clustered_se_ratio
-        )
-      ),
-    q25_se_ratio =
-      c(
-        as.numeric(
-          stats::quantile(
-            joint_results$clustered_se_ratio,
-            0.25
-          )
-        ),
-        as.numeric(
-          stats::quantile(
-            strict_results$clustered_se_ratio,
-            0.25
-          )
-        )
-      ),
-    q75_se_ratio =
-      c(
-        as.numeric(
-          stats::quantile(
-            joint_results$clustered_se_ratio,
-            0.75
-          )
-        ),
-        as.numeric(
-          stats::quantile(
-            strict_results$clustered_se_ratio,
-            0.75
-          )
-        )
-      ),
-    nominal_original_p_lt_0.05 =
-      c(
-        sum(
-          joint_results$original_targeted_lrt_p <
-          0.05
-        ),
-        sum(
-          strict_results$original_targeted_lrt_p <
-          0.05
-        )
-      ),
-    nominal_clustered_p_lt_0.05 =
-      c(
-        sum(
-          joint_results$clustered_p <
-          0.05
-        ),
-        sum(
-          strict_results$clustered_p <
-          0.05
-        )
-      ),
-    maximum_abs_effect_difference =
-      c(
-        max(
-          abs(
-            joint_results$effect_difference
-          )
-        ),
-        max(
-          abs(
-            strict_results$effect_difference
-          )
-        )
-      ),
-    maximum_genotype_alignment_difference =
-      c(
-        max(
-          joint_results$maximum_genotype_alignment_difference
-        ),
-        max(
-          strict_results$maximum_genotype_alignment_difference
-        )
-      ),
-    maximum_study_random_variance =
-      c(
-        max(
-          joint_results$study_random_variance,
-          na.rm = TRUE
-        ),
-        max(
-          strict_results$study_random_variance,
-          na.rm = TRUE
-        )
-      ),
-    stringsAsFactors = FALSE
-  )
-
-
-########################################
-# POWER WITH CLONE-CLUSTERED SES       #
-########################################
-
-strict_raw_p_boundary =
-  max(
-    jBH_analyte_ixn$p_value,
-    na.rm = TRUE
-  )
-
-thresholds =
-  data.frame(
-    threshold =
-      c(
-        "nominal_0.05",
-        "observed_5pct_FDR_raw_p_boundary"
-      ),
-    alpha =
-      c(
-        0.05,
-        strict_raw_p_boundary
-      ),
-    stringsAsFactors = FALSE
-  )
-
-delta_grid =
-  seq(
-    0,
-    0.60,
-    by = 0.025
-  )
-
-power_rows =
-  list()
-
-power_index =
-  1L
-
-for (
-  threshold_index in
-  seq_len(
-    nrow(
-      thresholds
-    )
-  )
-) {
-
-  alpha =
-    thresholds$alpha[
-      threshold_index
-    ]
-
-  for (
-    delta in
-    delta_grid
-  ) {
-
-    ####################################
-    # ORIGINAL SE APPROXIMATION        #
-    ####################################
-
-    critical_z =
-      stats::qnorm(
-        1 -
-        alpha /
-        2
-      )
-
-    ncp_original =
-      delta /
-      joint_results$lmer_se
-
-    original_power =
-      stats::pnorm(
-        -critical_z,
-        mean =
-          ncp_original
-      ) +
-      stats::pnorm(
-        critical_z,
-        mean =
-          ncp_original,
-        lower.tail = FALSE
-      )
-
-    ####################################
-    # CLONE-CLUSTERED APPROXIMATION    #
-    ####################################
-
-    critical_t =
-      stats::qt(
-        1 -
-        alpha /
-        2,
-      df =
-        joint_results$cluster_df
-      )
-
-    ncp_cluster =
-      delta /
-      joint_results$clustered_se
-
-    clustered_power =
-      stats::pt(
-        -critical_t,
-        df =
-          joint_results$cluster_df,
-        ncp =
-          ncp_cluster
-      ) +
-      stats::pt(
-        critical_t,
-        df =
-          joint_results$cluster_df,
-        ncp =
-          ncp_cluster,
-        lower.tail = FALSE
-      )
-
-    power_rows[[
-      power_index
-    ]] =
-      data.frame(
-        threshold =
-          thresholds$threshold[
-            threshold_index
-          ],
-        alpha =
-          alpha,
-        true_abs_interaction =
-          delta,
-        inference =
-          c(
-            "original",
-            "clone_clustered"
-          ),
-        mean_power =
-          c(
-            mean(
-              original_power
-            ),
-            mean(
-              clustered_power
-            )
-          ),
-        median_power =
-          c(
-            stats::median(
-              original_power
-            ),
-            stats::median(
-              clustered_power
-            )
-          ),
-        p10_power =
-          c(
-            as.numeric(
-              stats::quantile(
-                original_power,
-                0.10
-              )
-            ),
-            as.numeric(
-              stats::quantile(
-                clustered_power,
-                0.10
-              )
-            )
-          ),
-        p90_power =
-          c(
-            as.numeric(
-              stats::quantile(
-                original_power,
-                0.90
-              )
-            ),
-            as.numeric(
-              stats::quantile(
-                clustered_power,
-                0.90
-              )
-            )
-          ),
-        stringsAsFactors = FALSE
-      )
-
-    power_index =
-      power_index +
-      1L
-  }
 }
 
-clustered_power =
-  do.call(
-    rbind,
-    power_rows
-  )
-
+if (sum(joint_check$original_interaction_p < 0.05) != 149L) {
+  stop("Expected 149/868 nominal post-hoc interaction signals in the original model.")
+}
 
 ########################################
-# PREVALENCE SENSITIVITY               #
+# REVIEWER-FACING SUMMARY              #
 ########################################
 
-prevalence =
-  c(
-    0.05,
-    0.10,
-    0.25,
-    0.50,
-    1.00
-  )
+summarize_set = function(label, dat) {
 
-clustered_prevalence =
-  do.call(
-    rbind,
-    lapply(
-      seq_len(
-        nrow(
-          clustered_power
-        )
-      ),
-      function(i) {
+  robust_ok =
+    is.finite(dat$robust_interaction_effect) &
+    is.finite(dat$robust_interaction_se) &
+    is.finite(dat$robust_interaction_p)
+  random_ok = dat$clone_random_fit_success &
+    is.finite(dat$clone_random_interaction_p)
 
-        row =
-          clustered_power[
-            i,
-            ,
-            drop = FALSE
-          ]
-
-        data.frame(
-          threshold =
-            row$threshold,
-          alpha =
-            row$alpha,
-          true_abs_interaction =
-            row$true_abs_interaction,
-          inference =
-            row$inference,
-          prevalence =
-            prevalence,
-          n_joint_loci =
-            nrow(
-              joint_results
-            ),
-          expected_true_discordant =
-            prevalence *
-            nrow(
-              joint_results
-            ),
-          mean_power =
-            row$mean_power,
-          expected_detected =
-            prevalence *
-            nrow(
-              joint_results
-            ) *
-            row$mean_power,
-          stringsAsFactors = FALSE
-        )
-      }
-    )
-  )
-
-
-########################################
-# STRICT-QTL TARGETED SENSITIVITY      #
-########################################
-
-strict_sensitivity =
   data.frame(
-    n_strict =
-      nrow(
-        strict_results
-      ),
-    clustered_nominal_p_lt_0.05 =
-      sum(
-        strict_results$clustered_p <
-        0.05
-      ),
-    clustered_p_below_observed_5pct_FDR_raw_p_boundary =
-      sum(
-        strict_results$clustered_p <=
-        strict_raw_p_boundary
-      ),
-    observed_5pct_FDR_raw_p_boundary =
-      strict_raw_p_boundary,
-    median_clustered_p =
-      stats::median(
-        strict_results$clustered_p
-      ),
+    set = label,
+    n_loci = nrow(dat),
+    median_clone_clusters = stats::median(dat$n_clone_clusters),
+    median_reused_clone_fraction = stats::median(dat$reused_clone_fraction),
+    original_nominal_p_lt_0_05 = sum(dat$original_interaction_p < 0.05),
+    robust_fit_success = sum(robust_ok),
+    robust_nominal_p_lt_0_05 = sum(dat$robust_interaction_p < 0.05, na.rm = TRUE),
+    original_and_robust_nominal_p_lt_0_05 = sum(
+      dat$original_interaction_p < 0.05 &
+      dat$robust_interaction_p < 0.05,
+      na.rm = TRUE
+    ),
+    median_robust_to_original_se_ratio = stats::median(
+      dat$robust_to_original_se_ratio,
+      na.rm = TRUE
+    ),
+    robust_effect_pearson_r = stats::cor(
+      dat$original_interaction_effect[robust_ok],
+      dat$robust_interaction_effect[robust_ok],
+      method = "pearson"
+    ),
+    robust_effect_spearman_rho = stats::cor(
+      dat$original_interaction_effect[robust_ok],
+      dat$robust_interaction_effect[robust_ok],
+      method = "spearman"
+    ),
+    robust_sign_concordance = mean(
+      sign(dat$original_interaction_effect[robust_ok]) ==
+      sign(dat$robust_interaction_effect[robust_ok])
+    ),
+    clone_random_fit_success = sum(random_ok),
+    clone_random_full_singular = sum(
+      dat$clone_random_full_singular %in% TRUE,
+      na.rm = TRUE
+    ),
+    clone_random_nominal_p_lt_0_05 = sum(
+      dat$clone_random_interaction_p < 0.05,
+      na.rm = TRUE
+    ),
+    original_and_clone_random_nominal_p_lt_0_05 = sum(
+      dat$original_interaction_p < 0.05 &
+      dat$clone_random_interaction_p < 0.05,
+      na.rm = TRUE
+    ),
+    median_clone_random_variance = stats::median(
+      dat$clone_random_variance[random_ok],
+      na.rm = TRUE
+    ),
+    clone_random_effect_pearson_r = stats::cor(
+      dat$original_interaction_effect[random_ok],
+      dat$clone_random_interaction_effect[random_ok],
+      method = "pearson"
+    ),
+    clone_random_effect_spearman_rho = stats::cor(
+      dat$original_interaction_effect[random_ok],
+      dat$clone_random_interaction_effect[random_ok],
+      method = "spearman"
+    ),
+    clone_random_sign_concordance = mean(
+      sign(dat$original_interaction_effect[random_ok]) ==
+      sign(dat$clone_random_interaction_effect[random_ok])
+    ),
     stringsAsFactors = FALSE
   )
+}
 
-
-########################################
-# SAVE OUTPUTS                         #
-########################################
-
-write.table(
-  clustered_results,
-  file =
-    paste0(
-      dependence_asys,
-      "clone_clustered_locus_results.tsv"
-    ),
-  sep = "\t",
-  quote = FALSE,
-  row.names = FALSE
-)
-
-write.table(
-  dependence_summary,
-  file =
-    paste0(
-      dependence_asys,
-      "clone_clustered_summary.tsv"
-    ),
-  sep = "\t",
-  quote = FALSE,
-  row.names = FALSE
-)
-
-write.table(
-  clustered_power,
-  file =
-    paste0(
-      dependence_asys,
-      "clone_clustered_power.tsv"
-    ),
-  sep = "\t",
-  quote = FALSE,
-  row.names = FALSE
-)
-
-write.table(
-  clustered_prevalence,
-  file =
-    paste0(
-      dependence_asys,
-      "clone_clustered_prevalence.tsv"
-    ),
-  sep = "\t",
-  quote = FALSE,
-  row.names = FALSE
-)
-
-write.table(
-  strict_sensitivity,
-  file =
-    paste0(
-      dependence_asys,
-      "strict_qtl_clone_sensitivity.tsv"
-    ),
-  sep = "\t",
-  quote = FALSE,
-  row.names = FALSE
-)
-
-saveRDS(
+segregant_dependence_summary = do.call(
+  rbind,
   list(
-    locus_results =
-      clustered_results,
-    summary =
-      dependence_summary,
-    power =
-      clustered_power,
-    prevalence =
-      clustered_prevalence,
-    strict_sensitivity =
-      strict_sensitivity
-  ),
-  file =
-    paste0(
-      dependence_imed,
-      "review_interaction_dependence.rds"
+    summarize_set(
+      "all_unique_targeted_loci",
+      segregant_dependence_locus_results
+    ),
+    summarize_set(
+      "868_joint_QTLs",
+      segregant_dependence_locus_results[
+        segregant_dependence_locus_results$in_joint_868,
+        ,
+        drop = FALSE
+      ]
+    ),
+    summarize_set(
+      "64_strict_interaction_QTLs",
+      segregant_dependence_locus_results[
+        segregant_dependence_locus_results$in_strict_64,
+        ,
+        drop = FALSE
+      ]
     )
+  )
+)
+rownames(segregant_dependence_summary) = NULL
+
+#################
+# WRITE OUTPUTS #
+#################
+
+write_tsv(
+  segregant_panel_overlap,
+  "segregant_panel_overlap.tsv"
+)
+write_tsv(
+  segregant_dependence_locus_results,
+  "segregant_dependence_locus_results.tsv"
+)
+write_tsv(
+  segregant_dependence_summary,
+  "segregant_dependence_summary.tsv"
 )
 
 message("")
-message(
-  "Clone-dependence sensitivity complete."
-)
-message(
-  "Joint loci: ",
-  nrow(
-    joint_results
-  )
-)
-message(
-  "Strict loci: ",
-  nrow(
-    strict_results
-  )
-)
-message(
-  "Median clustered/original SE ratio, joint: ",
-  signif(
-    stats::median(
-      joint_results$clustered_se_ratio
-    ),
-    4
-  )
-)
+message("Shared-segregant sensitivity complete.")
+message("Output directory: ", dependence_asys)
+message("Original refit max p error, joint: ", signif(joint_p_error, 4))
+message("Original refit max p error, strict: ", signif(strict_p_error, 4))
+message("")
+print(segregant_dependence_summary, row.names = FALSE)
