@@ -15,7 +15,7 @@ review_asys = paste0(asys, "review/")
 final_asys = paste0(review_asys, "final/")
 manifest_path = paste0(review_asys, "review_output_manifest.tsv")
 power_workbook_path = paste0(final_asys, "power_analysis.xlsx")
-final_tsv_path = paste0(final_asys, "pairwise_power_for_frank.tsv")
+final_tsv_path = paste0(final_asys, "pairwise_power_predictions.tsv")
 
 if (!exists("allpairs_env", inherits = TRUE)) {
   stop("All-pair finalizer must run after iReviewPowerAllPairs.R.")
@@ -25,7 +25,7 @@ if (!exists(
   envir = allpairs_env,
   inherits = FALSE
 )) {
-  stop("All-pair analysis did not generate pairwise_power_for_frank.")
+  stop("All-pair analysis did not generate pairwise power predictions.")
 }
 if (!file.exists(power_workbook_path)) {
   stop("Missing finalized power workbook: ", power_workbook_path)
