@@ -40,3 +40,10 @@ sys.source(
 source("/PHShome/kv1026/p05/iReviewWorkbookFinalize.R")
 source("/PHShome/kv1026/p05/iReviewPrePowerSupportFinalize.R")
 source("/PHShome/kv1026/p05/iReviewPowerAllPairsFinalize.R")
+
+allpairs_attenuation_env = new.env(parent = globalenv())
+sys.source(
+  "/PHShome/kv1026/p05/iReviewPowerAllPairsAttenuation.R",
+  envir = allpairs_attenuation_env
+)
+source("/PHShome/kv1026/p05/iReviewPowerAllPairsAttenuationFinalize.R")
