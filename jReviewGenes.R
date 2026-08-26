@@ -118,7 +118,13 @@ format_p = function(x) {
   )
 }
 
-continuous_row = function(feature, label) {
+continuous_row = function(
+  feature,
+  label,
+  effect_display = c("rank_biserial", "log2_fold")
+) {
+
+  effect_display = match.arg(effect_display)
 
   x = as.numeric(supported[[feature]])
   y = as.numeric(background[[feature]])
@@ -133,11 +139,28 @@ continuous_row = function(feature, label) {
   u = as.numeric(test$statistic)
   rank_biserial = 2 * u / (length(x) * length(y)) - 1
 
+  if (effect_display == "log2_fold") {
+    median_difference = median(x) - median(y)
+    fold_difference = 2^abs(median_difference)
+    direction = ifelse(
+      median_difference >= 0,
+      "higher",
+      "lower"
+    )
+    effect_size = sprintf(
+      "%.2f-fold %s",
+      fold_difference,
+      direction
+    )
+  } else {
+    effect_size = sprintf("r = %.2f", rank_biserial)
+  }
+
   data.frame(
     Characteristic = label,
     `Supported genes` = sprintf("%.2f", median(x)),
     `Other genes` = sprintf("%.2f", median(y)),
-    `Effect size` = sprintf("r = %.2f", rank_biserial),
+    `Effect size` = effect_size,
     P = format_p(test$p.value),
     check.names = FALSE,
     stringsAsFactors = FALSE
@@ -194,7 +217,8 @@ binary_row = function(feature, label) {
 review_table = rbind(
   continuous_row(
     "expression",
-    "Mean log2 TPM"
+    "Mean log2 TPM",
+    effect_display = "log2_fold"
   ),
   binary_row(
     "essential",
