@@ -76,7 +76,7 @@ parallel_lapply = function(X, FUN) {
   lapply(X, FUN)
 }
 
-canonical_clone = function(x) {
+canonical_segregant = function(x) {
   x = trimws(as.character(x))
   x = gsub("_", ".", x, fixed = TRUE)
   gsub("\\s+", "", x)
@@ -97,45 +97,18 @@ interaction_term = function(beta_names) {
   term[[1]]
 }
 
-cluster_vcov_cr1 = function(fit, cluster) {
-
-  X = stats::model.matrix(fit)
-  residual = stats::residuals(fit)
-  cluster = factor(cluster)
-
-  N = nrow(X)
-  K = ncol(X)
-  G = nlevels(cluster)
-
-  if (qr(X)$rank != K) stop("Cluster-robust fixed-effect model is rank deficient.")
-  if (G <= K) stop("Too few segregant clusters for CR1 covariance.")
-
-  bread = solve(crossprod(X))
-  score = X * residual
-  score_cluster = rowsum(score, group = cluster, reorder = FALSE)
-  meat = crossprod(score_cluster)
-  correction = (G / (G - 1)) * ((N - 1) / (N - K))
-  vcov = correction * bread %*% meat %*% bread
-
-  list(
-    vcov = vcov,
-    n_clusters = G,
-    df = G - 1L
-  )
-}
-
-fit_clone_random_lrt = function(model_frame, clone) {
+fit_segregant_random_lrt = function(model_frame, segregant) {
 
   dat = model_frame
-  dat$clone = factor(clone)
+  dat$segregant = factor(segregant)
   dat$study = factor(dat$study)
   dat$analyte = factor(dat$analyte)
 
   f0 = stats::as.formula(
-    "pheno ~ (1 | study) + analyte + geno + (1 | clone)"
+    "pheno ~ (1 | study) + analyte + geno + (1 | segregant)"
   )
   f1 = stats::as.formula(
-    "pheno ~ (1 | study) + analyte + geno + geno:analyte + (1 | clone)"
+    "pheno ~ (1 | study) + analyte + geno + geno:analyte + (1 | segregant)"
   )
 
   ctrl = lme4::lmerControl(
@@ -174,16 +147,16 @@ fit_clone_random_lrt = function(model_frame, clone) {
   if (inherits(fit_result, "error")) {
     return(
       data.frame(
-        clone_random_fit_success = FALSE,
-        clone_random_warning = paste(unique(warning_text), collapse = " | "),
-        clone_random_error = conditionMessage(fit_result),
-        clone_random_interaction_effect = NA_real_,
-        clone_random_interaction_p = NA_real_,
-        clone_random_lod = NA_real_,
-        clone_random_null_singular = NA,
-        clone_random_full_singular = NA,
-        clone_random_variance = NA_real_,
-        clone_random_study_variance = NA_real_,
+        segregant_random_fit_success = FALSE,
+        segregant_random_warning = paste(unique(warning_text), collapse = " | "),
+        segregant_random_error = conditionMessage(fit_result),
+        segregant_random_interaction_effect = NA_real_,
+        segregant_random_interaction_p = NA_real_,
+        segregant_random_lod = NA_real_,
+        segregant_random_null_singular = NA,
+        segregant_random_full_singular = NA,
+        segregant_random_variance = NA_real_,
+        segregant_random_study_variance = NA_real_,
         stringsAsFactors = FALSE
       )
     )
@@ -205,20 +178,28 @@ fit_clone_random_lrt = function(model_frame, clone) {
   ) / log(10)
 
   vc = as.data.frame(lme4::VarCorr(m1))
-  clone_variance = vc$vcov[vc$grp == "clone" & vc$var1 == "(Intercept)"]
-  study_variance = vc$vcov[vc$grp == "study" & vc$var1 == "(Intercept)"]
+  segregant_variance = vc$vcov[
+    vc$grp == "segregant" & vc$var1 == "(Intercept)"
+  ]
+  study_variance = vc$vcov[
+    vc$grp == "study" & vc$var1 == "(Intercept)"
+  ]
 
   data.frame(
-    clone_random_fit_success = is.finite(p),
-    clone_random_warning = paste(unique(warning_text), collapse = " | "),
-    clone_random_error = if (is.finite(p)) "" else "LRT p-value was not finite",
-    clone_random_interaction_effect = unname(lme4::fixef(m1)[term]),
-    clone_random_interaction_p = p,
-    clone_random_lod = lod,
-    clone_random_null_singular = lme4::isSingular(m0, tol = 1e-5),
-    clone_random_full_singular = lme4::isSingular(m1, tol = 1e-5),
-    clone_random_variance = if (length(clone_variance) == 1L) clone_variance else NA_real_,
-    clone_random_study_variance = if (length(study_variance) == 1L) study_variance else NA_real_,
+    segregant_random_fit_success = is.finite(p),
+    segregant_random_warning = paste(unique(warning_text), collapse = " | "),
+    segregant_random_error = if (is.finite(p)) "" else "LRT p-value was not finite",
+    segregant_random_interaction_effect = unname(lme4::fixef(m1)[term]),
+    segregant_random_interaction_p = p,
+    segregant_random_lod = lod,
+    segregant_random_null_singular = lme4::isSingular(m0, tol = 1e-5),
+    segregant_random_full_singular = lme4::isSingular(m1, tol = 1e-5),
+    segregant_random_variance = if (
+      length(segregant_variance) == 1L
+    ) segregant_variance else NA_real_,
+    segregant_random_study_variance = if (
+      length(study_variance) == 1L
+    ) study_variance else NA_real_,
     stringsAsFactors = FALSE
   )
 }
@@ -298,23 +279,23 @@ message("Targeted loci: ", nrow(target_pairs))
 # DOCUMENT SEGREGANT REUSE             #
 ########################################
 
-study_clone_ids = lapply(
+study_segregant_ids = lapply(
   studies_analyte,
-  function(study) canonical_clone(rownames(study$gdata))
+  function(study) canonical_segregant(rownames(study$gdata))
 )
 
-if (any(vapply(study_clone_ids, anyDuplicated, integer(1)) > 0L)) {
+if (any(vapply(study_segregant_ids, anyDuplicated, integer(1)) > 0L)) {
   stop("At least one joint-analysis dataset has duplicated canonical segregant IDs.")
 }
 
-pair_index = utils::combn(names(study_clone_ids), 2, simplify = FALSE)
+pair_index = utils::combn(names(study_segregant_ids), 2, simplify = FALSE)
 segregant_panel_overlap = do.call(
   rbind,
   lapply(
     pair_index,
     function(pair) {
-      x = study_clone_ids[[pair[[1]]]]
-      y = study_clone_ids[[pair[[2]]]]
+      x = study_segregant_ids[[pair[[1]]]]
+      y = study_segregant_ids[[pair[[2]]]]
       shared = intersect(x, y)
       data.frame(
         study_1 = pair[[1]],
@@ -361,7 +342,7 @@ if (length(modelQTL) != nrow(target_pairs)) {
 }
 
 ########################################
-# RECONSTRUCT SEGREGANT IDs PER MODEL  #
+# RECONSTRUCT SEGREGANT IDS PER MODEL  #
 ########################################
 
 reconstruct_rows = function(gene, marker, model_frame) {
@@ -385,11 +366,11 @@ reconstruct_rows = function(gene, marker, model_frame) {
     use.names = FALSE
   )
 
-  clone_expected = unlist(
+  segregant_expected = unlist(
     lapply(
       support,
       function(study) {
-        canonical_clone(rownames(studies_analyte[[study]]$gdata))
+        canonical_segregant(rownames(studies_analyte[[study]]$gdata))
       }
     ),
     use.names = FALSE
@@ -430,7 +411,7 @@ reconstruct_rows = function(gene, marker, model_frame) {
 
   list(
     support = support,
-    clone = clone_expected,
+    segregant = segregant_expected,
     genotype_difference = genotype_difference
   )
 }
@@ -452,31 +433,17 @@ extract_locus = function(x) {
 
   mf = stats::model.frame(m)
   alignment = reconstruct_rows(gene, marker, mf)
-  clone = alignment$clone
+  segregant = alignment$segregant
 
-  clone_counts = table(clone)
-  n_clone_clusters = length(clone_counts)
-  n_reused_clones = sum(clone_counts > 1L)
+  segregant_counts = table(segregant)
+  n_segregant_clusters = length(segregant_counts)
+  n_reused_segregants = sum(segregant_counts > 1L)
 
   original_beta = lme4::fixef(m)
   original_term = interaction_term(names(original_beta))
   original_se = sqrt(diag(stats::vcov(m)))[original_term]
 
-  robust_fit = stats::lm(
-    pheno ~ study + geno + geno:analyte,
-    data = mf
-  )
-  robust_term = interaction_term(names(stats::coef(robust_fit)))
-  robust = cluster_vcov_cr1(robust_fit, clone)
-  robust_se = sqrt(robust$vcov[robust_term, robust_term])
-  robust_effect = unname(stats::coef(robust_fit)[robust_term])
-  robust_t = robust_effect / robust_se
-  robust_p = 2 * stats::pt(
-    -abs(robust_t),
-    df = robust$df
-  )
-
-  clone_random = fit_clone_random_lrt(mf, clone)
+  segregant_random = fit_segregant_random_lrt(mf, segregant)
 
   data.frame(
     gene = gene,
@@ -486,28 +453,22 @@ extract_locus = function(x) {
     in_strict_64 = key %in% strict_keys,
     n_observations = nrow(mf),
     n_studies = length(alignment$support),
-    n_clone_clusters = n_clone_clusters,
-    n_reused_clones = n_reused_clones,
-    reused_clone_fraction = n_reused_clones / n_clone_clusters,
-    maximum_observations_per_clone = max(clone_counts),
+    n_segregant_clusters = n_segregant_clusters,
+    n_reused_segregants = n_reused_segregants,
+    reused_segregant_fraction = n_reused_segregants / n_segregant_clusters,
+    maximum_observations_per_segregant = max(segregant_counts),
     maximum_genotype_alignment_difference = alignment$genotype_difference,
     original_interaction_effect = unname(original_beta[original_term]),
     original_interaction_se = unname(original_se),
     original_interaction_p = as.numeric(x$interaction_pval),
     original_model_singular = lme4::isSingular(m, tol = 1e-5),
-    robust_interaction_effect = robust_effect,
-    robust_interaction_se = robust_se,
-    robust_interaction_t = robust_t,
-    robust_interaction_df = robust$df,
-    robust_interaction_p = robust_p,
-    robust_to_original_se_ratio = robust_se / original_se,
-    clone_random,
+    segregant_random,
     stringsAsFactors = FALSE,
     check.names = FALSE
   )
 }
 
-message("Calculating cluster-robust and clone-random-effect sensitivities...")
+message("Calculating crossed-segregant random-effect sensitivity...")
 
 locus_list = parallel_lapply(modelQTL, extract_locus)
 segregant_dependence_locus_results = do.call(rbind, locus_list)
@@ -607,75 +568,46 @@ if (sum(joint_check$original_interaction_p < 0.05) != 149L) {
 
 summarize_set = function(label, dat) {
 
-  robust_ok =
-    is.finite(dat$robust_interaction_effect) &
-    is.finite(dat$robust_interaction_se) &
-    is.finite(dat$robust_interaction_p)
-  random_ok = dat$clone_random_fit_success &
-    is.finite(dat$clone_random_interaction_p)
+  random_ok = dat$segregant_random_fit_success &
+    is.finite(dat$segregant_random_interaction_p)
 
   data.frame(
     set = label,
     n_loci = nrow(dat),
-    median_clone_clusters = stats::median(dat$n_clone_clusters),
-    median_reused_clone_fraction = stats::median(dat$reused_clone_fraction),
+    median_segregant_clusters = stats::median(dat$n_segregant_clusters),
+    median_reused_segregant_fraction = stats::median(dat$reused_segregant_fraction),
     original_nominal_p_lt_0_05 = sum(dat$original_interaction_p < 0.05),
-    robust_fit_success = sum(robust_ok),
-    robust_nominal_p_lt_0_05 = sum(dat$robust_interaction_p < 0.05, na.rm = TRUE),
-    original_and_robust_nominal_p_lt_0_05 = sum(
+    segregant_random_fit_success = sum(random_ok),
+    segregant_random_full_singular = sum(
+      dat$segregant_random_full_singular %in% TRUE,
+      na.rm = TRUE
+    ),
+    segregant_random_nominal_p_lt_0_05 = sum(
+      dat$segregant_random_interaction_p < 0.05,
+      na.rm = TRUE
+    ),
+    original_and_segregant_random_nominal_p_lt_0_05 = sum(
       dat$original_interaction_p < 0.05 &
-      dat$robust_interaction_p < 0.05,
+      dat$segregant_random_interaction_p < 0.05,
       na.rm = TRUE
     ),
-    median_robust_to_original_se_ratio = stats::median(
-      dat$robust_to_original_se_ratio,
+    median_segregant_random_variance = stats::median(
+      dat$segregant_random_variance[random_ok],
       na.rm = TRUE
     ),
-    robust_effect_pearson_r = stats::cor(
-      dat$original_interaction_effect[robust_ok],
-      dat$robust_interaction_effect[robust_ok],
+    segregant_random_effect_pearson_r = stats::cor(
+      dat$original_interaction_effect[random_ok],
+      dat$segregant_random_interaction_effect[random_ok],
       method = "pearson"
     ),
-    robust_effect_spearman_rho = stats::cor(
-      dat$original_interaction_effect[robust_ok],
-      dat$robust_interaction_effect[robust_ok],
+    segregant_random_effect_spearman_rho = stats::cor(
+      dat$original_interaction_effect[random_ok],
+      dat$segregant_random_interaction_effect[random_ok],
       method = "spearman"
     ),
-    robust_sign_concordance = mean(
-      sign(dat$original_interaction_effect[robust_ok]) ==
-      sign(dat$robust_interaction_effect[robust_ok])
-    ),
-    clone_random_fit_success = sum(random_ok),
-    clone_random_full_singular = sum(
-      dat$clone_random_full_singular %in% TRUE,
-      na.rm = TRUE
-    ),
-    clone_random_nominal_p_lt_0_05 = sum(
-      dat$clone_random_interaction_p < 0.05,
-      na.rm = TRUE
-    ),
-    original_and_clone_random_nominal_p_lt_0_05 = sum(
-      dat$original_interaction_p < 0.05 &
-      dat$clone_random_interaction_p < 0.05,
-      na.rm = TRUE
-    ),
-    median_clone_random_variance = stats::median(
-      dat$clone_random_variance[random_ok],
-      na.rm = TRUE
-    ),
-    clone_random_effect_pearson_r = stats::cor(
-      dat$original_interaction_effect[random_ok],
-      dat$clone_random_interaction_effect[random_ok],
-      method = "pearson"
-    ),
-    clone_random_effect_spearman_rho = stats::cor(
-      dat$original_interaction_effect[random_ok],
-      dat$clone_random_interaction_effect[random_ok],
-      method = "spearman"
-    ),
-    clone_random_sign_concordance = mean(
+    segregant_random_sign_concordance = mean(
       sign(dat$original_interaction_effect[random_ok]) ==
-      sign(dat$clone_random_interaction_effect[random_ok])
+      sign(dat$segregant_random_interaction_effect[random_ok])
     ),
     stringsAsFactors = FALSE
   )
