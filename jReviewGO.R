@@ -56,7 +56,10 @@ if (
 
 required_qtl_columns = c(
   "gene",
-  "bin"
+  "marker",
+  "bin",
+  "mRNA_effect",
+  "protein_effect"
 )
 
 missing_qtl_columns = setdiff(
@@ -335,7 +338,7 @@ if (
 }
 
 ##############################
-# RIBOSOME CLASS CONTRAST    #
+# RIBOSOME CLASS COMPARISON  #
 ##############################
 
 ribosome_focus_terms = data.frame(
@@ -372,7 +375,7 @@ other_interaction_genes = setdiff(
   discordant_genes
 )
 
-ribosome_contrast_rows = lapply(
+ribosome_comparison_rows = lapply(
   seq_len(nrow(ribosome_focus_terms)),
   function(i) {
 
@@ -419,6 +422,8 @@ ribosome_contrast_rows = lapply(
       other_interactions = paste0(length(other_members), "/27"),
       odds_ratio = unname(fisher_result$estimate),
       fisher_p = fisher_result$p.value,
+      discordant_genes = paste(discordant_members, collapse = ";"),
+      other_interaction_genes = paste(other_members, collapse = ";"),
       stringsAsFactors = FALSE
     )
   }
@@ -426,7 +431,7 @@ ribosome_contrast_rows = lapply(
 
 ribosome_contrast = do.call(
   rbind,
-  ribosome_contrast_rows
+  ribosome_comparison_rows
 )
 
 ribosome_contrast$fisher_q = p.adjust(
@@ -444,7 +449,190 @@ if (
   ribosomal_subunit_row$discordant != "21/37" ||
   ribosomal_subunit_row$other_interactions != "1/27"
 ) {
-  stop("Unexpected ribosomal-subunit class contrast.")
+  stop("Unexpected ribosomal-subunit class comparison.")
+}
+
+########################################
+# MKT1 AND BUL2 SUPPORT SUMMARY        #
+########################################
+
+ribosome_member_text = c(
+  ribosome_contrast$discordant_genes,
+  ribosome_contrast$other_interaction_genes
+)
+ribosome_member_text = ribosome_member_text[
+  !is.na(ribosome_member_text) & nzchar(ribosome_member_text)
+]
+ribosome_related_genes = sort(
+  unique(
+    unlist(
+      strsplit(
+        ribosome_member_text,
+        ";",
+        fixed = TRUE
+      )
+    )
+  )
+)
+ribosome_related_genes = ribosome_related_genes[
+  nzchar(ribosome_related_genes)
+]
+
+marker_parts = strsplit(
+  as.character(qtls_aug_analyte_ixn$marker),
+  ":",
+  fixed = TRUE
+)
+if (any(lengths(marker_parts) != 2L)) {
+  stop("Could not parse all strict-interaction peak markers.")
+}
+
+qtl_chr = vapply(
+  marker_parts,
+  function(x) x[[1]],
+  character(1)
+)
+qtl_position = suppressWarnings(
+  as.numeric(
+    vapply(
+      marker_parts,
+      function(x) x[[2]],
+      character(1)
+    )
+  )
+)
+if (any(!is.finite(qtl_position))) {
+  stop("Could not parse strict-interaction peak positions.")
+}
+
+hotspot_windows = data.frame(
+  hotspot = c("MKT1", "BUL2"),
+  chromosome = c("chrXIV", "chrXIII"),
+  locus_start = c(431063L, 28519L),
+  locus_end = c(532790L, 79575L),
+  stringsAsFactors = FALSE
+)
+
+class_enrichment_p = function(in_hotspot, n_hotspot, class_total) {
+  outside_class = class_total - in_hotspot
+  outside_total = 64L - n_hotspot
+  table_2x2 = matrix(
+    c(
+      in_hotspot,
+      n_hotspot - in_hotspot,
+      outside_class,
+      outside_total - outside_class
+    ),
+    nrow = 2,
+    byrow = TRUE
+  )
+  fisher.test(
+    table_2x2,
+    alternative = "greater"
+  )$p.value
+}
+
+hotspot_summary_rows = lapply(
+  seq_len(nrow(hotspot_windows)),
+  function(i) {
+    window = hotspot_windows[i, , drop = FALSE]
+    keep =
+      qtl_chr == window$chromosome &
+      qtl_position >= window$locus_start &
+      qtl_position <= window$locus_end
+
+    dat = qtls_aug_analyte_ixn[keep, , drop = FALSE]
+    dat$ribosome_related = dat$gene %in% ribosome_related_genes
+
+    n_discordant = sum(dat$bin == "line cross")
+    n_mRNA_specific = sum(dat$bin == "mRNA specific")
+    n_protein_specific = sum(dat$bin == "protein specific")
+    n_same_direction = sum(dat$bin == "same direction")
+
+    discordant = dat[dat$bin == "line cross", , drop = FALSE]
+
+    data.frame(
+      hotspot = window$hotspot,
+      chromosome = window$chromosome,
+      locus_start = window$locus_start,
+      locus_end = window$locus_end,
+      strict_interaction_QTLs = nrow(dat),
+      percent_of_strict_64 = 100 * nrow(dat) / 64,
+      discordant_QTLs = n_discordant,
+      percent_of_discordant_37 = 100 * n_discordant / 37,
+      mRNA_specific_QTLs = n_mRNA_specific,
+      protein_specific_QTLs = n_protein_specific,
+      same_direction_QTLs = n_same_direction,
+      discordant_ribosome_associated = sum(discordant$ribosome_related),
+      discordant_nonribosome = sum(!discordant$ribosome_related),
+      discordant_mRNA_down_protein_up = sum(
+        discordant$mRNA_effect < 0 & discordant$protein_effect > 0
+      ),
+      discordant_mRNA_up_protein_down = sum(
+        discordant$mRNA_effect > 0 & discordant$protein_effect < 0
+      ),
+      discordant_enrichment_fisher_p = class_enrichment_p(
+        n_discordant,
+        nrow(dat),
+        expected_sizes[["discordant"]]
+      ),
+      mRNA_specific_enrichment_fisher_p = class_enrichment_p(
+        n_mRNA_specific,
+        nrow(dat),
+        expected_sizes[["mRNA_specific"]]
+      ),
+      protein_specific_enrichment_fisher_p = class_enrichment_p(
+        n_protein_specific,
+        nrow(dat),
+        expected_sizes[["protein_specific"]]
+      ),
+      ribosome_definition = paste0(
+        "Member of >=1 of the six ribosome/translation GO terms in Ribosome comparison"
+      ),
+      stringsAsFactors = FALSE
+    )
+  }
+)
+
+hotspot_summary = do.call(
+  rbind,
+  hotspot_summary_rows
+)
+rownames(hotspot_summary) = NULL
+
+expected_hotspot_counts = data.frame(
+  hotspot = c("MKT1", "BUL2"),
+  strict_interaction_QTLs = c(36L, 11L),
+  discordant_QTLs = c(26L, 1L),
+  mRNA_specific_QTLs = c(8L, 0L),
+  protein_specific_QTLs = c(2L, 9L),
+  same_direction_QTLs = c(0L, 1L),
+  discordant_ribosome_associated = c(21L, 0L),
+  discordant_mRNA_down_protein_up = c(26L, 1L),
+  discordant_mRNA_up_protein_down = c(0L, 0L),
+  stringsAsFactors = FALSE
+)
+
+hotspot_order = match(
+  expected_hotspot_counts$hotspot,
+  hotspot_summary$hotspot
+)
+if (any(is.na(hotspot_order))) {
+  stop("MKT1/BUL2 hotspot summary is incomplete.")
+}
+hotspot_check = hotspot_summary[
+  hotspot_order,
+  names(expected_hotspot_counts),
+  drop = FALSE
+]
+
+for (column in setdiff(names(expected_hotspot_counts), "hotspot")) {
+  if (!identical(
+    as.integer(hotspot_check[[column]]),
+    expected_hotspot_counts[[column]]
+  )) {
+    stop("Unexpected MKT1/BUL2 count in column: ", column)
+  }
 }
 
 ################
@@ -484,9 +672,23 @@ write.table(
   row.names = FALSE
 )
 
+write.table(
+  hotspot_summary,
+  file = paste0(
+    go_asys,
+    "MKT1_BUL2_hotspot_summary.tsv"
+  ),
+  sep = "\t",
+  quote = FALSE,
+  row.names = FALSE
+)
+
 message("")
 message("GO review analysis complete.")
 message("Output directory: ", go_asys)
 message("")
 message("Reviewer-focused GO table:")
 print(key_go, row.names = FALSE)
+message("")
+message("MKT1/BUL2 support summary:")
+print(hotspot_summary, row.names = FALSE)
