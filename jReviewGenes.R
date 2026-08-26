@@ -121,10 +121,10 @@ format_p = function(x) {
 continuous_row = function(
   feature,
   label,
-  effect_display = c("rank_biserial", "log2_fold")
+  fold_scale = c("linear", "log2")
 ) {
 
-  effect_display = match.arg(effect_display)
+  fold_scale = match.arg(fold_scale)
 
   x = as.numeric(supported[[feature]])
   y = as.numeric(background[[feature]])
@@ -136,30 +136,39 @@ continuous_row = function(
     wilcox.test(x, y, exact = FALSE)
   )
 
-  u = as.numeric(test$statistic)
-  rank_biserial = 2 * u / (length(x) * length(y)) - 1
+  median_x = median(x)
+  median_y = median(y)
 
-  if (effect_display == "log2_fold") {
-    median_difference = median(x) - median(y)
+  if (fold_scale == "log2") {
+    median_difference = median_x - median_y
     fold_difference = 2^abs(median_difference)
     direction = ifelse(
       median_difference >= 0,
       "higher",
       "lower"
     )
-    effect_size = sprintf(
-      "%.2f-fold %s",
-      fold_difference,
-      direction
-    )
   } else {
-    effect_size = sprintf("r = %.2f", rank_biserial)
+    if (median_x <= 0 || median_y <= 0) {
+      stop("Linear-scale fold differences require positive medians.")
+    }
+    fold_difference = max(median_x, median_y) / min(median_x, median_y)
+    direction = ifelse(
+      median_x >= median_y,
+      "higher",
+      "lower"
+    )
   }
+
+  effect_size = sprintf(
+    "%.2f-fold %s",
+    fold_difference,
+    direction
+  )
 
   data.frame(
     Characteristic = label,
-    `Supported genes` = sprintf("%.2f", median(x)),
-    `Other genes` = sprintf("%.2f", median(y)),
+    `Supported genes` = sprintf("%.2f", median_x),
+    `Other genes` = sprintf("%.2f", median_y),
     `Effect size` = effect_size,
     P = format_p(test$p.value),
     check.names = FALSE,
@@ -218,7 +227,7 @@ review_table = rbind(
   continuous_row(
     "expression",
     "Mean log2 TPM",
-    effect_display = "log2_fold"
+    fold_scale = "log2"
   ),
   binary_row(
     "essential",
@@ -230,7 +239,8 @@ review_table = rbind(
   ),
   continuous_row(
     "PPI",
-    "PPI partners"
+    "PPI partners",
+    fold_scale = "linear"
   )
 )
 
