@@ -34,7 +34,7 @@ load_single_rda = function(path, object_name) {
   env[[object_name]]
 }
 
-canonical_clone = function(x) {
+canonical_segregant = function(x) {
   x = trimws(as.character(x))
   x = gsub("_", ".", x, fixed = TRUE)
   gsub("\\s+", "", x)
@@ -161,56 +161,69 @@ record_check(
   paste0("max genotype difference=", alignment_error)
 )
 
-robust_ok =
-  is.finite(locus$robust_interaction_effect) &
-  is.finite(locus$robust_interaction_se) &
-  locus$robust_interaction_se > 0 &
-  is.finite(locus$robust_interaction_p)
+random_success = locus$segregant_random_fit_success %in% TRUE
 record_check(
-  "cluster_robust_inference_is_finite_for_all_loci",
-  all(robust_ok),
-  paste0(sum(robust_ok), "/", nrow(locus), " loci finite")
-)
-
-record_check(
-  "strict_interactions_are_stable_to_cluster_robust_inference",
-  sum(strict$robust_interaction_p < 0.05) == 64L &&
-    all(
-      sign(strict$robust_interaction_effect) ==
-      sign(strict$original_interaction_effect)
-    ),
-  paste0(
-    "robust nominal strict interactions=",
-    sum(strict$robust_interaction_p < 0.05),
-    "; sign concordance=",
-    mean(
-      sign(strict$robust_interaction_effect) ==
-      sign(strict$original_interaction_effect)
-    )
-  )
-)
-
-random_success = locus$clone_random_fit_success %in% TRUE
-record_check(
-  "clone_random_refits_are_fully_accounted_for",
+  "segregant_random_refits_are_complete",
   all(random_success) &&
-    all(is.finite(locus$clone_random_interaction_p)) &&
-    all(is.finite(locus$clone_random_interaction_effect)),
+    all(is.finite(locus$segregant_random_interaction_p)) &&
+    all(is.finite(locus$segregant_random_interaction_effect)),
   paste0(sum(random_success), "/", nrow(locus), " successful")
 )
 
 record_check(
-  "strict_interactions_are_stable_to_clone_random_refits",
-  sum(strict$clone_random_interaction_p < 0.05) == 64L &&
+  "all_crossed_segregant_full_models_are_singular",
+  sum(locus$segregant_random_full_singular %in% TRUE) == 928L,
+  paste0(
+    sum(locus$segregant_random_full_singular %in% TRUE),
+    "/928 singular"
+  )
+)
+
+record_check(
+  "joint_interactions_are_highly_concordant_in_segregant_refits",
+  stats::cor(
+    joint$original_interaction_effect,
+    joint$segregant_random_interaction_effect,
+    method = "pearson"
+  ) > 0.99 &&
+    mean(
+      sign(joint$original_interaction_effect) ==
+      sign(joint$segregant_random_interaction_effect)
+    ) > 0.98 &&
+    sum(
+      joint$original_interaction_p < 0.05 &
+      joint$segregant_random_interaction_p < 0.05
+    ) == 149L,
+  paste0(
+    "Pearson r=",
+    signif(
+      stats::cor(
+        joint$original_interaction_effect,
+        joint$segregant_random_interaction_effect,
+        method = "pearson"
+      ),
+      6
+    ),
+    "; original nominal retained=",
+    sum(
+      joint$original_interaction_p < 0.05 &
+      joint$segregant_random_interaction_p < 0.05
+    )
+  )
+)
+
+record_check(
+  "strict_interactions_are_stable_to_segregant_random_refits",
+  sum(strict$segregant_random_interaction_p < 0.05) == 64L &&
     all(
-      sign(strict$clone_random_interaction_effect) ==
+      sign(strict$segregant_random_interaction_effect) ==
       sign(strict$original_interaction_effect)
     ),
   paste0(
-    "clone-random nominal strict interactions=",
-    sum(strict$clone_random_interaction_p < 0.05),
+    "nominal strict interactions=",
+    sum(strict$segregant_random_interaction_p < 0.05),
     "; singular full fits=",
-    sum(strict$clone_random_full_singular %in% TRUE)
+    sum(strict$segregant_random_full_singular %in% TRUE)
   )
 )
 
@@ -226,11 +239,11 @@ studies_analyte = lapply(
 )
 names(studies_analyte) = metadata_analyte$study
 
-clone_ids = lapply(
+segregant_ids = lapply(
   studies_analyte,
-  function(study) canonical_clone(rownames(study$gdata))
+  function(study) canonical_segregant(rownames(study$gdata))
 )
-pairs = utils::combn(names(clone_ids), 2, simplify = FALSE)
+pairs = utils::combn(names(segregant_ids), 2, simplify = FALSE)
 panel_recomputed = do.call(
   rbind,
   lapply(
@@ -241,8 +254,8 @@ panel_recomputed = do.call(
         study_2 = pair[[2]],
         n_shared = length(
           intersect(
-            clone_ids[[pair[[1]]]],
-            clone_ids[[pair[[2]]]]
+            segregant_ids[[pair[[1]]]],
+            segregant_ids[[pair[[2]]]]
           )
         ),
         stringsAsFactors = FALSE
@@ -291,10 +304,15 @@ record_check(
     nrow(strict_summary) == 1L &&
     joint_summary$original_nominal_p_lt_0_05 ==
       sum(joint$original_interaction_p < 0.05) &&
-    joint_summary$robust_nominal_p_lt_0_05 ==
-      sum(joint$robust_interaction_p < 0.05) &&
-    strict_summary$clone_random_nominal_p_lt_0_05 ==
-      sum(strict$clone_random_interaction_p < 0.05),
+    joint_summary$segregant_random_full_singular ==
+      sum(joint$segregant_random_full_singular %in% TRUE) &&
+    joint_summary$original_and_segregant_random_nominal_p_lt_0_05 ==
+      sum(
+        joint$original_interaction_p < 0.05 &
+        joint$segregant_random_interaction_p < 0.05
+      ) &&
+    strict_summary$segregant_random_nominal_p_lt_0_05 ==
+      sum(strict$segregant_random_interaction_p < 0.05),
   "Reviewer-facing summary agrees with locus-level results."
 )
 
@@ -307,15 +325,18 @@ validator_text = paste(
   collapse = "\n"
 )
 record_check(
-  "sensitivity_models_preserve_intended_structure",
-  grepl(
-    "pheno ~ study + geno + geno:analyte",
-    analysis_text,
-    fixed = TRUE
-  ) &&
-    grepl("(1 | clone)", analysis_text, fixed = TRUE) &&
+  "sensitivity_model_is_crossed_segregant_random_intercept",
+  grepl("(1 | segregant)", analysis_text, fixed = TRUE) &&
     grepl("REML = FALSE", analysis_text, fixed = TRUE),
-  "Robust model uses study fixed intercepts; mixed model adds clone intercept."
+  "Sensitivity model adds a crossed segregant random intercept."
+)
+
+record_check(
+  "cluster_robust_analysis_is_not_run",
+  !grepl("cluster_vcov_cr1", analysis_text, fixed = TRUE) &&
+    !grepl("robust_interaction", analysis_text, fixed = TRUE) &&
+    !any(grepl("robust", names(locus), ignore.case = TRUE)),
+  "No cluster-robust model or reviewer-facing robust columns remain."
 )
 
 assignment_token = paste0("<", "-")
