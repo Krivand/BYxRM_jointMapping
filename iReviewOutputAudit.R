@@ -46,4 +46,9 @@ sys.source(
   "/PHShome/kv1026/p05/iReviewPowerAllPairsAttenuation.R",
   envir = allpairs_attenuation_env
 )
+allpairs_attenuation_plot_env = new.env(parent = globalenv())
+sys.source(
+  "/PHShome/kv1026/p05/iReviewPowerAllPairsAttenuationPlots.R",
+  envir = allpairs_attenuation_plot_env
+)
 source("/PHShome/kv1026/p05/iReviewPowerAllPairsAttenuationFinalize.R")
