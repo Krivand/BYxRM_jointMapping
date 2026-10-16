@@ -9,13 +9,32 @@ if (length(args) != 2L) stop("Supply p05 root and new output.")
 root = normalizePath(args[[1]], mustWork = TRUE)
 out = args[[2]]
 if (file.exists(out)) stop("Output exists; refusing to overwrite.")
-d = read.delim(file.path(root, "asys/review/interaction_dependence",
-                         "segregant_dependence_locus_results.tsv"),
-               stringsAsFactors = FALSE)
+locus_file = file.path(root, "asys/review/interaction_dependence",
+                       "segregant_dependence_locus_results.tsv")
+workbook = file.path(root, "asys/review/final/segregant_dependence.xlsx")
+if (file.exists(locus_file)) {
+  d = read.delim(locus_file, stringsAsFactors = FALSE)
+} else {
+  if (!file.exists(workbook)) stop("Neither locus TSV nor final workbook exists.")
+  if (!requireNamespace("readxl", quietly = TRUE)) stop("Package readxl required.")
+  sheets = readxl::excel_sheets(workbook)
+  selected = intersect(c("Locus results", "Locus_level"), sheets)
+  if (length(selected) != 1L) stop("Could not identify a unique locus-results sheet.")
+  d = as.data.frame(readxl::read_excel(workbook, sheet = selected))
+}
 required = c("gene", "marker", "in_joint_868", "in_strict_64",
              "segregant_random_full_singular", "segregant_random_variance",
              "segregant_random_study_variance", "segregant_random_fit_success")
-stopifnot(all(required %in% names(d)),
+stopifnot(all(required %in% names(d)))
+for (column in c("in_joint_868", "in_strict_64",
+                 "segregant_random_full_singular", "segregant_random_fit_success")) {
+  value = tolower(as.character(d[[column]]))
+  if (!all(is.na(value) | value %in% c("true", "false", "1", "0"))) {
+    stop("Unrecognized logical encoding: ", column)
+  }
+  d[[column]] = ifelse(is.na(value), NA, value %in% c("true", "1"))
+}
+stopifnot(
           !anyDuplicated(paste(d$gene, d$marker, sep = "::")),
           !anyNA(d$in_joint_868), !anyNA(d$in_strict_64),
           all(d$in_joint_868 | d$in_strict_64),
