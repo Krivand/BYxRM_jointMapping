@@ -3,9 +3,9 @@
 ########################################
 
 # Standalone: never source remap_functions.R (it installs packages).
-# Usage: Rscript --vanilla iReviewFrankPower.R P05_ROOT NEW_OUTPUT_DIRECTORY
+# Usage: Rscript --vanilla iReviewFrankPower.R P05_ROOT NEW_OUTPUT_DIRECTORY [THRESHOLD_AUDIT_DIRECTORY]
 args = commandArgs(trailingOnly = TRUE)
-if (length(args) != 2L) stop("Supply p05 root and a new output directory.")
+if (!(length(args) %in% c(2L, 3L))) stop("Supply root, new output and optional audit directory.")
 root = normalizePath(args[[1]], mustWork = TRUE)
 out = args[[2]]
 if (file.exists(out)) stop("Output already exists; refusing to overwrite.")
@@ -243,7 +243,7 @@ technical = make_technical_marker_ranges(
 )
 
 # Reuse the existing audit, but verify its exact log records and completed calls.
-audit_dir = file.path(root, "asys/review/power")
+audit_dir = if (length(args) == 3L) args[[3]] else file.path(root, "asys/review/power")
 thresholds = read_tsv(file.path(audit_dir, "threshold_full_first_pass_by_study_chr.tsv"))
 calls = read_tsv(file.path(audit_dir, "threshold_selected_full_calls.tsv"))
 required = c("study", "chromosome_number", "lod", "line_number", "call", "available")
