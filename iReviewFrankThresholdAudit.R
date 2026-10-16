@@ -336,6 +336,41 @@ threshold_calls = if (length(calls) > 0L) {
   data.frame()
 }
 
+# Historical seed_from collapses unsigned hashes above the signed integer limit
+# to seed 1. Resolve collisions using independently printed phenotype dimensions
+# and the final MM residualization column, never the call's position in the log.
+logged_genes = setNames(rep(NA_integer_, length(all_studies)), all_studies)
+for (study in all_studies) {
+  headers = which(lines == paste0("$", study))
+  values = integer()
+  for (h in headers[headers < min(threshold_calls$start_line)]) {
+    if (h < length(lines) && grepl("^\\[1\\][[:space:]]+[0-9]+[[:space:]]+[0-9]+[[:space:]]*$", lines[[h + 1L]])) {
+      values = c(values, as.integer(tail(strsplit(trimws(sub("^\\[1\\]", "", lines[[h + 1L]])), "[[:space:]]+")[[1]], 1)))
+    }
+  }
+  if (length(unique(values)) != 1L) stop("Ambiguous logged dimensions: ", study)
+  logged_genes[[study]] = unique(values)
+}
+threshold_calls$identity_source = ifelse(is.na(threshold_calls$study), NA_character_, "unique_seed_or_label")
+threshold_calls$n_genes_logged = NA_integer_
+for (i in which(threshold_calls$has_mm_signature)) {
+  if (is.na(threshold_calls$finish_line[[i]])) stop("Incomplete FULL call.")
+  segment = lines[threshold_calls$start_line[[i]]:threshold_calls$finish_line[[i]]]
+  mm = segment[grepl("MM residualization batch", segment, fixed = TRUE)]
+  endpoints = suppressWarnings(as.integer(sub(".*cols [0-9]+[^0-9]+([0-9]+)\\).*", "\\1", mm)))
+  if (!length(endpoints) || anyNA(endpoints)) stop("Cannot parse MM column counts.")
+  n_genes = max(endpoints)
+  candidates = all_studies[study_seed == threshold_calls$seed[[i]] & logged_genes == n_genes]
+  if (length(candidates) != 1L) stop("Seed and gene count do not uniquely identify call ", i)
+  previous = threshold_calls$study[[i]]
+  if (!is.na(previous) && previous != candidates[[1]]) stop("Conflicting study identity.")
+  threshold_calls$study[[i]] = candidates[[1]]
+  threshold_calls$identity_source[[i]] = "seed_and_logged_gene_count"
+  threshold_calls$n_genes_logged[[i]] = n_genes
+}
+write_table(data.frame(study = all_studies, seed = study_seed,
+                       n_genes = logged_genes), "threshold_identity_evidence.tsv")
+
 # A FULL map uses the LOCO mixed-model residualization. When an older wrapper
 # did not print an explicit FULL/SIMPLE label, the mapQTL MM log signature
 # identifies FULL calls without relying on run order.
