@@ -2,24 +2,36 @@
 ## FRANK REVIEW CIS TRANS COMPARISON   ##
 ########################################
 
-# Usage: Rscript --vanilla jReviewGeneRegulation.R P05_ROOT AB18_QTLS_TSV TESTED_GENES_TXT NEW_OUTPUT
-# AB18_QTLS_TSV must contain one row per published significant AB18 eQTL,
-# with unique qtl_id, gene (systematic ORF) and class (cis or trans).
-# Preserve the published local/distant classification in the reviewed adapter.
-# TESTED_GENES_TXT must include every gene tested, including genes with no QTL.
-# Do not construct that universe from the significant-QTL list.
+# Usage: Rscript --vanilla jReviewGeneRegulation.R P05_ROOT NEW_OUTPUT
+# Uses the existing Albert_2018 QTL table and its cis annotation.
+# The tested universe comes from the processed phenotype matrix, not QTL hits.
 args = commandArgs(trailingOnly = TRUE)
-if (length(args) != 4L) stop("Supply root, AB18 QTL table, tested genes and new output.")
+if (length(args) != 2L) stop("Supply p05 root and new output directory.")
 root = normalizePath(args[[1]], mustWork = TRUE)
-out = args[[4]]
+out = args[[2]]
 if (file.exists(out)) stop("Output already exists; refusing to overwrite.")
 if (!requireNamespace("readxl", quietly = TRUE)) stop("Package readxl required.")
-q = read.delim(args[[2]], stringsAsFactors = FALSE, check.names = FALSE)
-stopifnot(all(c("qtl_id", "gene", "class") %in% names(q)),
-          nrow(q) > 0L, !anyNA(q[, c("qtl_id", "gene", "class")]),
-          !anyDuplicated(q$qtl_id), all(nzchar(q$qtl_id)),
-          all(nzchar(q$gene)), all(q$class %in% c("cis", "trans")))
-tested = readLines(args[[3]], warn = FALSE)
+load_object = function(path, name) {
+  e = new.env(parent = emptyenv())
+  found = load(path, envir = e)
+  if (!(name %in% found)) stop("Missing object: ", name)
+  e[[name]]
+}
+qtls = load_object(file.path(root, "imed/Frank/qtls_list_260204.rda"), "qtls_list")
+ab18 = qtls$Albert_2018
+stopifnot(is.data.frame(ab18), nrow(ab18) > 0L,
+          all(c("gene_ID", "marker_name", "cis") %in% names(ab18)))
+cis_value = tolower(as.character(ab18$cis))
+if (anyNA(cis_value) || !all(cis_value %in% c("true", "false", "1", "0"))) {
+  stop("Unrecognized cis encoding; inspect annotation before proceeding.")
+}
+q = data.frame(qtl_id = paste(ab18$gene_ID, ab18$marker_name, sep = "::"),
+               gene = as.character(ab18$gene_ID),
+               class = ifelse(cis_value %in% c("true", "1"), "cis", "trans"))
+stopifnot(!anyNA(ab18$gene_ID), !anyNA(ab18$marker_name),
+          !anyDuplicated(q$qtl_id), all(nzchar(q$gene)))
+study = load_object(file.path(root, "imed/Albert_2018.rda"), "Albert_2018")
+tested = colnames(study$pheno)
 stopifnot(length(tested) > 0L, !anyDuplicated(tested), all(nzchar(tested)),
           all(q$gene %in% tested))
 supported = readLines(file.path(root, "imed/supported_analyte.txt"), warn = FALSE)
