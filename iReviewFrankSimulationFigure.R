@@ -1,5 +1,6 @@
 # Direct phenotype simulation using the original validator functions.
 args = commandArgs(TRUE)
+if (!(length(args) %in% c(1L, 2L))) stop("Supply output directory and optional saved simulation TSV.")
 out = args[[1]]
 independent_rcrit = function(lod, n) {
   sqrt(pmax(0, 1 - 10 ^ (-2 * lod / n)))
@@ -89,13 +90,23 @@ grid = do.call(rbind, lapply(c(33, 99, 1012), function(n) {
   d$n = n
   d
 }))
-simulation = do.call(rbind, lapply(seq_len(nrow(grid)), function(i) {
-  validate_direct_simulation(grid$n[i], grid$rho[i], grid$lod[i],
-                             n_rep = 1000L, seed = 20260818L + 1000L + i)
-}))
+# Saved results already contain both direction definitions; reuse without new draws.
+if (length(args) == 2L) {
+  simulation = read.delim(args[[2]], stringsAsFactors = FALSE)
+  required = c("n", "rho", "lod", "n_rep", "analytic_any", "simulated_any",
+               "analytic_same", "simulated_same")
+  stopifnot(nrow(simulation) == nrow(grid), all(required %in% names(simulation)))
+  stopifnot(all(simulation$n == grid$n), all(abs(simulation$rho - grid$rho) < 1e-12),
+            all(abs(simulation$lod - grid$lod) < 1e-12), all(simulation$n_rep == 1000L))
+} else {
+  simulation = do.call(rbind, lapply(seq_len(nrow(grid)), function(i) {
+    validate_direct_simulation(grid$n[i], grid$rho[i], grid$lod[i],
+                               n_rep = 1000L, seed = 20260818L + 1000L + i)
+  }))
+}
 stopifnot(nrow(simulation) == 63L)
-simulation$error = simulation$simulated_any - simulation$analytic_any
-simulation$mc_se = sqrt(simulation$analytic_any * (1 - simulation$analytic_any) / simulation$n_rep)
+simulation$error = simulation$simulated_same - simulation$analytic_same
+simulation$mc_se = sqrt(simulation$analytic_same * (1 - simulation$analytic_same) / simulation$n_rep)
 simulation$within_tolerance = abs(simulation$error) <= 0.005 + 4 * simulation$mc_se
 write.table(simulation, file.path(out, "simulation_actual_thresholds.tsv"),
             sep = "\t", quote = FALSE, row.names = FALSE)
@@ -103,7 +114,7 @@ simulation$sample_size = factor(simulation$n, levels = c(33, 99, 1012),
                                 labels = c("33", "99", "1,012"))
 simulation$threshold = factor(simulation$lod, levels = lods,
   labels = paste0(c("Low: ", "Median: ", "High: "), formatC(lods, digits = 3, format = "f")))
-p = ggplot2::ggplot(simulation, ggplot2::aes(x = analytic_any, y = simulated_any,
+p = ggplot2::ggplot(simulation, ggplot2::aes(x = analytic_same, y = simulated_same,
                                           color = sample_size, shape = threshold)) +
   ggplot2::geom_abline(slope = 1, intercept = 0, linetype = 2, color = "grey50") +
   ggplot2::geom_point(size = 3, alpha = 0.85) +
@@ -112,14 +123,16 @@ p = ggplot2::ggplot(simulation, ggplot2::aes(x = analytic_any, y = simulated_any
   ggplot2::scale_x_continuous(labels = scales::label_percent(), breaks = seq(0, 1, 0.2)) +
   ggplot2::scale_y_continuous(labels = scales::label_percent(), breaks = seq(0, 1, 0.2)) +
   ggplot2::coord_equal(xlim = c(0, 1), ylim = c(0, 1)) +
-  ggplot2::labs(x = "Detection probability from power calculation",
-    y = "Fraction detected in 1,000 phenotype simulations",
+  ggplot2::labs(x = "Same-direction detection probability",
+    y = "Fraction detected in the same direction",
     color = "Sample size", shape = "LOD threshold") +
   ggplot2::theme_classic(base_size = 14)
 ggplot2::ggsave(file.path(out, "simulation_actual_thresholds.png"),
                plot = p, width = 8, height = 6, dpi = 300)
+ggplot2::ggsave(file.path(out, "simulation_actual_thresholds.pdf"),
+               plot = p, width = 8, height = 6, device = "pdf")
 caption = sprintf(paste0(
-  "Simulation check of the power calculation described in the Second sentence. ",
+  "Simulation check of same-direction rediscovery power. ",
   "Each point represents one combination of sample size (33, 99 or 1,012), ",
   "effect size (rho = 0.10 to 0.40 in steps of 0.05), and LOD threshold ",
   "(%.3f, %.3f or %.3f: the minimum, median and maximum of 160 recovered ",
@@ -127,7 +140,8 @@ caption = sprintf(paste0(
   "probability calculated from the noncentral t distribution. For the y-axis, ",
   "we generated 1,000 phenotype datasets per setting by adding Gaussian noise ",
   "to a fixed, approximately balanced two-allele genotype effect, then calculated ",
-  "the fraction whose genotype-phenotype LOD exceeded the same cutoff. ",
+  "the fraction whose genotype-phenotype LOD exceeded the same cutoff and whose ",
+  "estimated effect had the same sign as the simulated positive effect. ",
   "The dashed line marks equality. This checks single-locus detection power; ",
   "it does not repeat genome-wide mapping or re-estimate FDR thresholds. ",
   "Maximum absolute difference: %.2f percentage points."),
