@@ -95,7 +95,7 @@ if (length(args) == 2L) {
   simulation = read.delim(args[[2]], stringsAsFactors = FALSE)
   required = c("n", "rho", "lod", "n_rep", "analytic_any", "simulated_any",
                "analytic_same", "simulated_same")
-  stopifnot(all(required %in% names(simulation)))
+  stopifnot(nrow(simulation) == nrow(grid), all(required %in% names(simulation)))
   stopifnot(all(simulation$n == grid$n), all(abs(simulation$rho - grid$rho) < 1e-12),
             all(abs(simulation$lod - grid$lod) < 1e-12), all(simulation$n_rep == 1000L))
 } else {
@@ -103,7 +103,6 @@ if (length(args) == 2L) {
     validate_direct_simulation(grid$n[i], grid$rho[i], grid$lod[i],
                                n_rep = 1000L, seed = 20260818L + 1000L + i)
   }))
-  
 }
 stopifnot(nrow(simulation) == 63L)
 simulation$error = simulation$simulated_same - simulation$analytic_same
@@ -125,11 +124,13 @@ p = ggplot2::ggplot(simulation, ggplot2::aes(x = analytic_same, y = simulated_sa
   ggplot2::scale_y_continuous(labels = scales::label_percent(), breaks = seq(0, 1, 0.2)) +
   ggplot2::coord_equal(xlim = c(0, 1), ylim = c(0, 1)) +
   ggplot2::labs(x = "Same-direction detection probability",
-    y = "Fraction detected in the same direction (1,000 simulations)",
+    y = "Fraction detected in the same direction",
     color = "Sample size", shape = "LOD threshold") +
   ggplot2::theme_classic(base_size = 14)
 ggplot2::ggsave(file.path(out, "simulation_actual_thresholds.png"),
                plot = p, width = 8, height = 6, dpi = 300)
+ggplot2::ggsave(file.path(out, "simulation_actual_thresholds.pdf"),
+               plot = p, width = 8, height = 6, device = "pdf")
 caption = sprintf(paste0(
   "Simulation check of same-direction rediscovery power. ",
   "Each point represents one combination of sample size (33, 99 or 1,012), ",
