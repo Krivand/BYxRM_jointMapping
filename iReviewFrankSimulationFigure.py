@@ -1,5 +1,5 @@
 """Run the corrected simulation figure and export its PNG in the same card."""
-import base64, hashlib, json, os, subprocess
+import base64, hashlib, json, os, subprocess, sys
 from pathlib import Path
 source = Path(__file__).resolve().parent
 output = Path(os.environ["ERIS_CARD_OUTPUT"]).resolve()
@@ -9,7 +9,7 @@ env.update(PATH="/data/gusev/ADQTL/envs/adqtl/bin:/usr/bin:/bin",
            OMP_NUM_THREADS="1", OPENBLAS_NUM_THREADS="1")
 with (output / "simulation.log").open("x") as log:
     p = subprocess.run(["/data/gusev/ADQTL/envs/adqtl/bin/Rscript", "--vanilla",
-        str(source / "iReviewFrankSimulationFigure.R"), str(output)],
+        str(source / "iReviewFrankSimulationFigure.R"), str(output), *sys.argv[1:]],
         env=env, stdout=log, stderr=subprocess.STDOUT)
 with (output / "simulation_report.json").open("x") as f:
     json.dump({"exit_code": p.returncode, "log": (output / "simulation.log").read_text()}, f)
