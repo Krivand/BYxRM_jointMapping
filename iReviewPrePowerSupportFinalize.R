@@ -169,7 +169,6 @@ expected_hotspot = data.frame(
   mRNA_specific_QTLs = c(8L, 0L),
   protein_specific_QTLs = c(2L, 9L),
   same_direction_QTLs = c(0L, 1L),
-  discordant_ribosome_associated = c(21L, 0L),
   discordant_mRNA_down_protein_up = c(26L, 1L),
   discordant_mRNA_up_protein_down = c(0L, 0L),
   stringsAsFactors = FALSE
@@ -234,7 +233,7 @@ hotspot_manifest = data.frame(
   columns = ncol(hotspot_summary),
   purpose = paste(
     "MKT1 and BUL2 strict-interaction counts, interaction classes,",
-    "ribosome membership, effect orientation, and class-enrichment tests"
+    "and effect orientation (descriptive counts only)"
   ),
   stringsAsFactors = FALSE
 )
@@ -331,3 +330,4 @@ cat("Continuous effects: fold differences for expression and PPI\n")
 cat("Hotspot support rows: 2 (MKT1, BUL2)\n")
 cat("Dependence sensitivity: crossed-segregant random intercept only\n")
 cat("Directory: ", final_asys, "\n", sep = "")
+
