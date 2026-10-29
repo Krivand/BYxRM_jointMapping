@@ -402,32 +402,8 @@ write_workbook(gene_sheets, "supported_gene_characteristics.xlsx")
 # 3. GO WORKBOOK                       #
 ########################################
 
-go_summary = go_env$key_go
-go_contrast = go_env$ribosome_contrast
-
-contrast_row = go_contrast[
-  go_contrast$GO_term == "ribosomal subunit",
-  ,
-  drop = FALSE
-]
-key_row = which(go_summary$`GO term` == "ribosomal subunit")
-
-if (nrow(contrast_row) != 1L || length(key_row) != 1L) {
-  stop("Could not identify the ribosomal-subunit GO contrast.")
-}
-
-go_summary$`Discordant vs other interaction QTLs` = NA_character_
-go_summary$`Class contrast FDR` = NA_character_
-go_summary$`Discordant vs other interaction QTLs`[[key_row]] = paste(
-  contrast_row$discordant[[1]],
-  "vs",
-  contrast_row$other_interactions[[1]]
-)
-go_summary$`Class contrast FDR`[[key_row]] = formatC(
-  contrast_row$fisher_q[[1]],
-  format = "e",
-  digits = 2
-)
+go_summary = go_env$discordant_summary
+go_comparison = go_env$class_comparison
 
 go_gene_sets = do.call(
   rbind,
@@ -454,7 +430,7 @@ go_sheets = list(
   mRNA_specific_9 = go_all[go_all$gene_set == "mRNA_specific", , drop = FALSE],
   Same_direction_4 = go_all[go_all$gene_set == "same_direction", , drop = FALSE],
   Significant_all = go_env$significant_go,
-  Ribosome_contrast = go_contrast,
+  Discordant_vs_other = go_comparison,
   Gene_sets = go_gene_sets
 )
 write_workbook(go_sheets, "interaction_GO.xlsx")
@@ -609,14 +585,14 @@ purpose = list(
     Gene_level = "Gene-level Albert et al. 2018 characteristics for the full 5,720-gene comparison universe"
   ),
   interaction_GO.xlsx = c(
-    Summary = "Reviewer-facing GO terms and ribosomal-subunit class contrast",
+    Summary = "All significant first-pass discordant terms and full-family class comparisons",
     All_strict_64 = "All tested GO terms for the 64 strict interaction-QTL genes",
     Discordant_37 = "All tested GO terms for the 37 discordant strict interaction-QTL genes",
     Protein_specific_14 = "All tested GO terms for the 14 protein-specific strict interaction-QTL genes",
     mRNA_specific_9 = "All tested GO terms for the 9 mRNA-specific strict interaction-QTL genes",
     Same_direction_4 = "All tested GO terms for the 4 same-direction strict interaction-QTL genes",
     Significant_all = "All GO terms passing FDR < 0.05 across gene-set by ontology analyses",
-    Ribosome_contrast = "Direct discordant-versus-other-interaction contrasts for six ribosome-focused GO terms",
+    Discordant_vs_other = "All eligible GO terms: discordant versus other interaction genes; BH within ontology",
     Gene_sets = "Genes entering the total strict-interaction and subclass GO analyses"
   ),
   power_analysis.xlsx = c(
@@ -709,3 +685,4 @@ cat("Supporting sheets are retained inside each workbook.\n")
 cat("Directory: ", final_asys, "\n", sep = "")
 cat("Manifest: ", paste0(review_asys, "review_output_manifest.tsv"), "\n", sep = "")
 cat("All nonfinal review outputs and intermediates removed.\n")
+

@@ -366,35 +366,8 @@ if (
 # GO SUMMARY: COMPLETE CLASS COMPARISON#
 ########################################
 
-go_summary = go_env$key_go
-go_comparison = go_env$ribosome_contrast
-
-comparison_index = match(
-  tolower(go_summary$`GO term`),
-  tolower(go_comparison$GO_term)
-)
-
-if (any(is.na(comparison_index))) {
-  stop("Could not match every highlighted GO term to its class comparison.")
-}
-
-go_summary$`Discordant vs other interaction QTLs` = paste(
-  go_comparison$discordant[comparison_index],
-  "vs",
-  go_comparison$other_interactions[comparison_index]
-)
-go_summary$`Class comparison FDR` = formatC(
-  go_comparison$fisher_q[comparison_index],
-  format = "e",
-  digits = 2
-)
-
-if (
-  any(is.na(go_summary$`Discordant vs other interaction QTLs`)) ||
-  any(is.na(go_summary$`Class comparison FDR`))
-) {
-  stop("GO summary class-comparison columns are incomplete.")
-}
+go_summary = go_env$discordant_summary
+go_comparison = go_env$class_comparison
 
 go_gene_sets = do.call(
   rbind,
@@ -441,7 +414,7 @@ go_sheets_final = list(
     drop = FALSE
   ],
   "Significant terms" = go_env$significant_go,
-  "Ribosome comparison" = go_comparison,
+  "Discordant vs other" = go_comparison,
   "Gene sets" = go_gene_sets
 )
 
@@ -612,13 +585,11 @@ go_summary_check = openxlsx::read.xlsx(
   sheet = "Summary",
   check.names = FALSE
 )
-comparison_col = "Discordant_vs_other_interaction_QTLs"
-comparison_fdr_col = "Class_comparison_FDR"
 if (
-  !(comparison_col %in% names(go_summary_check)) ||
-  !(comparison_fdr_col %in% names(go_summary_check)) ||
-  any(is.na(go_summary_check[[comparison_col]])) ||
-  any(is.na(go_summary_check[[comparison_fdr_col]]))
+  !all(c("GO_ID", "ontology", "comparison_p", "comparison_q", "significant_both") %in%
+       names(go_summary_check)) ||
+  nrow(go_summary_check) != nrow(go_summary) ||
+  any(is.na(go_summary_check$comparison_q))
 ) {
   stop("GO summary does not contain complete class-comparison results.")
 }
@@ -648,14 +619,14 @@ purpose = list(
     "Gene data" = "Albert et al. 2018 gene characteristics for the 5,720-gene comparison set"
   ),
   interaction_GO.xlsx = c(
-    "Summary" = "GO terms highlighted in the response with class comparisons",
+    "Summary" = "All significant first-pass discordant terms with full-family class comparisons",
     "All 64 interactions" = "All tested GO terms for the 64 strict interaction-QTL genes",
     "Discordant 37" = "All tested GO terms for the 37 discordant interaction-QTL genes",
     "Protein specific 14" = "All tested GO terms for the 14 protein-specific interaction-QTL genes",
     "mRNA specific 9" = "All tested GO terms for the 9 mRNA-specific interaction-QTL genes",
     "Same direction 4" = "All tested GO terms for the 4 same-direction interaction-QTL genes",
     "Significant terms" = "All GO terms passing FDR < 0.05 across the gene-set and ontology analyses",
-    "Ribosome comparison" = "Discordant versus other interaction-QTL genes for six ribosome-related GO terms",
+    "Discordant vs other" = "All eligible GO terms: discordant versus other interaction genes; BH within ontology",
     "Gene sets" = "Genes included in the full strict-interaction and subclass GO analyses"
   ),
   power_analysis.xlsx = c(

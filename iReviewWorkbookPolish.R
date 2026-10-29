@@ -40,7 +40,7 @@ sheet_plan = list(
     mRNA_specific_9 = "mRNA specific 9",
     Same_direction_4 = "Same direction 4",
     Significant_all = "Significant terms",
-    Ribosome_contrast = "Ribosome comparison",
+    Discordant_vs_other = "Discordant vs other",
     Gene_sets = "Gene sets"
   ),
   power_analysis.xlsx = c(
@@ -71,14 +71,14 @@ purpose = list(
     "Gene data" = "Albert et al. 2018 gene characteristics for the 5,720-gene comparison set"
   ),
   interaction_GO.xlsx = c(
-    "Summary" = "GO terms highlighted in the response and the ribosomal-subunit class comparison",
+    "Summary" = "All significant first-pass discordant terms with full-family class comparisons",
     "All 64 interactions" = "All tested GO terms for the 64 strict interaction-QTL genes",
     "Discordant 37" = "All tested GO terms for the 37 discordant interaction-QTL genes",
     "Protein specific 14" = "All tested GO terms for the 14 protein-specific interaction-QTL genes",
     "mRNA specific 9" = "All tested GO terms for the 9 mRNA-specific interaction-QTL genes",
     "Same direction 4" = "All tested GO terms for the 4 same-direction interaction-QTL genes",
     "Significant terms" = "All GO terms passing FDR < 0.05 across the gene-set and ontology analyses",
-    "Ribosome comparison" = "Discordant versus other interaction-QTL genes for six ribosome-related GO terms",
+    "Discordant vs other" = "All eligible GO terms: discordant versus other interaction genes; BH within ontology",
     "Gene sets" = "Genes included in the full strict-interaction and subclass GO analyses"
   ),
   power_analysis.xlsx = c(
@@ -281,3 +281,4 @@ cat("Formatting: plain white sheets with bold headers and filters\n")
 cat("QA-only validation sheet removed\n")
 cat("Technical labels 'contrast' and 'engine' removed from the visible workbooks\n")
 cat("Directory: ", final_asys, "\n", sep = "")
+

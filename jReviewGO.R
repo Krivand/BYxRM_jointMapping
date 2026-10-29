@@ -25,7 +25,9 @@ for (pkg in review_pkgs) {
 
 rm(review_pkgs)
 
-go_asys = paste0(asys, "review/go/")
+go_asys = paste0(sub("/+$", "", Sys.getenv(
+  "REVIEW_GO_OUTPUT_DIR", unset = paste0(asys, "review/go/")
+)), "/")
 ensure_directory(go_asys)
 
 ########################
@@ -159,12 +161,6 @@ if (length(intersect(supported_analyte, names(gene2GO))) != 385L) {
 # HELPER FUNCTIONS #
 ####################
 
-parse_topgo_p = function(x) {
-  x = as.character(x)
-  x = gsub("^<\\s*", "", x)
-  suppressWarnings(as.numeric(x))
-}
-
 run_one_go = function(
   interesting_genes,
   set_name,
@@ -222,17 +218,20 @@ run_one_go = function(
     character(1)
   )
 
+  raw_p = score(go_test)[go_table$GO.ID]
+  stopifnot(length(raw_p) == nrow(go_table), all(is.finite(raw_p)))
+
   go_table = go_table %>%
     mutate(
       gene_set = set_name,
       ontology = ontology,
       n_gene_set = length(interesting_genes),
       n_universe = length(supported_analyte),
-      fisher_p = parse_topgo_p(classicFisher),
+      fisher_p = unname(raw_p),
       fisher_q = p.adjust(fisher_p, method = "BH"),
       Annotated = as.numeric(Annotated),
       Significant = as.numeric(Significant),
-      Expected = as.numeric(Expected),
+      Expected = Annotated * length(interesting_genes) / length(supported_analyte),
       fold_enrichment = Significant / Expected
     ) %>%
     dplyr::select(
@@ -292,191 +291,79 @@ significant_go = all_go_results %>%
   filter(fisher_q < 0.05) %>%
   arrange(gene_set, ontology, fisher_q, fisher_p)
 
-############################
-# REVIEWER-FOCUSED GO ROWS #
-############################
+########################################
+# ALL-TERM DISCORDANT CLASS COMPARISON  #
+########################################
 
-key_terms = c(
-  "GO:0006412",
-  "GO:0042254",
-  "GO:0044391",
-  "GO:0003735"
-)
-
-key_go = all_go_results %>%
-  filter(
-    gene_set == "discordant",
-    GO.ID %in% key_terms
-  ) %>%
-  mutate(
-    term_order = match(GO.ID, key_terms),
-    `GO term` = Term,
-    Ontology = ontology,
-    `Discordant genes` = paste0(Significant, "/37"),
-    Expected = sprintf("%.2f", Expected),
-    `Fold enrichment` = sprintf("%.2f", fold_enrichment),
-    FDR = formatC(fisher_q, format = "e", digits = 2)
-  ) %>%
-  arrange(term_order) %>%
-  dplyr::select(
-    `GO term`,
-    Ontology,
-    `Discordant genes`,
-    Expected,
-    `Fold enrichment`,
-    FDR
-  )
-
-if (
-  nrow(key_go) != 4L ||
-  !identical(
-    key_go$`Discordant genes`,
-    c("25/37", "15/37", "21/37", "20/37")
-  )
-) {
-  stop("Unexpected counts for reviewer-focused GO terms.")
-}
-
-##############################
-# RIBOSOME CLASS COMPARISON  #
-##############################
-
-ribosome_focus_terms = data.frame(
-  ontology = c(
-    "CC",
-    "CC",
-    "MF",
-    "BP",
-    "BP",
-    "BP"
-  ),
-  GO.ID = c(
-    "GO:0005840",
-    "GO:0044391",
-    "GO:0003735",
-    "GO:0006412",
-    "GO:0002181",
-    "GO:0042254"
-  ),
-  Term = c(
-    "ribosome",
-    "ribosomal subunit",
-    "structural constituent of ribosome",
-    "translation",
-    "cytoplasmic translation",
-    "ribosome biogenesis"
-  ),
-  stringsAsFactors = FALSE
-)
-
+# Eligibility is fixed by the original 385-gene background, not significance
+# or the number of discordant genes. Use topGO-propagated term membership.
 discordant_genes = gene_sets$discordant
-other_interaction_genes = setdiff(
-  gene_sets$all_interaction,
-  discordant_genes
-)
+other_interaction_genes = setdiff(gene_sets$all_interaction, discordant_genes)
+stopifnot(length(other_interaction_genes) == 27L,
+          all(gene_sets$all_interaction %in% supported_analyte))
 
-ribosome_comparison_rows = lapply(
-  seq_len(nrow(ribosome_focus_terms)),
-  function(i) {
-
-    this_term = ribosome_focus_terms[i, , drop = FALSE]
-    result_name = paste(
-      "all_interaction",
-      this_term$ontology,
-      sep = "_"
-    )
-
-    term_members = genesInTerm(
-      go_objects[[result_name]],
-      whichGO = this_term$GO.ID
-    )[[this_term$GO.ID]]
-
-    discordant_members = sort(
-      intersect(discordant_genes, term_members)
-    )
-
-    other_members = sort(
-      intersect(other_interaction_genes, term_members)
-    )
-
-    comparison_table = matrix(
-      c(
-        length(discordant_members),
-        length(discordant_genes) - length(discordant_members),
-        length(other_members),
-        length(other_interaction_genes) - length(other_members)
-      ),
-      nrow = 2,
-      byrow = TRUE
-    )
-
-    fisher_result = fisher.test(
-      comparison_table,
-      alternative = "greater"
-    )
-
-    data.frame(
-      GO.ID = this_term$GO.ID,
-      GO_term = this_term$Term,
-      discordant = paste0(length(discordant_members), "/37"),
-      other_interactions = paste0(length(other_members), "/27"),
-      odds_ratio = unname(fisher_result$estimate),
-      fisher_p = fisher_result$p.value,
-      discordant_genes = paste(discordant_members, collapse = ";"),
-      other_interaction_genes = paste(other_members, collapse = ";"),
-      stringsAsFactors = FALSE
-    )
-  }
-)
-
-ribosome_contrast = do.call(
-  rbind,
-  ribosome_comparison_rows
-)
-
-ribosome_contrast$fisher_q = p.adjust(
-  ribosome_contrast$fisher_p,
-  method = "BH"
-)
-
-ribosomal_subunit_row = ribosome_contrast[
-  ribosome_contrast$GO.ID == "GO:0044391",
-  ,
-  drop = FALSE
-]
-
-if (
-  ribosomal_subunit_row$discordant != "21/37" ||
-  ribosomal_subunit_row$other_interactions != "1/27"
-) {
-  stop("Unexpected ribosomal-subunit class comparison.")
+compare_go_term = function(term_members, discordant_genes, other_genes) {
+  a = sum(discordant_genes %in% term_members)
+  b = length(discordant_genes) - a
+  c = sum(other_genes %in% term_members)
+  d = length(other_genes) - c
+  informative = (a + c > 0L) && (b + d > 0L)
+  # Empty/full columns contain no class contrast. Retain them in the BH family
+  # with P = 1 and an explicitly non-estimable OR.
+  fit = if (informative) {
+    fisher.test(matrix(c(a, b, c, d), nrow = 2, byrow = TRUE),
+                alternative = "greater")
+  } else NULL
+  data.frame(
+    discordant_members = a, discordant_nonmembers = b,
+    other_members = c, other_nonmembers = d,
+    discordant = paste0(a, "/", length(discordant_genes)),
+    other_interactions = paste0(c, "/", length(other_genes)),
+    odds_ratio = if (informative) unname(fit$estimate) else NA_real_,
+    fisher_p = if (informative) fit$p.value else 1,
+    estimable = informative,
+    discordant_genes = paste(sort(intersect(discordant_genes, term_members)), collapse = ";"),
+    other_interaction_genes = paste(sort(intersect(other_genes, term_members)), collapse = ";"),
+    stringsAsFactors = FALSE
+  )
 }
 
-########################################
-# MKT1 AND BUL2 SUPPORT SUMMARY        #
-########################################
+comparison_tables = lapply(ontologies, function(ontology) {
+  primary = go_tables[[paste("discordant", ontology, sep = "_")]]
+  members = genesInTerm(go_objects[[paste("discordant", ontology, sep = "_")]],
+                        whichGO = primary$GO.ID)
+  counts = bind_rows(lapply(primary$GO.ID, function(id) {
+    compare_go_term(members[[id]], discordant_genes, other_interaction_genes)
+  }))
+  out = cbind(primary[, c("ontology", "GO.ID", "Term", "Annotated")], counts)
+  out$fisher_q = p.adjust(out$fisher_p, method = "BH")
+  out$n_tests = nrow(out)
+  out
+})
+class_comparison = bind_rows(comparison_tables) %>%
+  arrange(ontology, fisher_q, fisher_p, GO.ID)
 
-ribosome_member_text = c(
-  ribosome_contrast$discordant_genes,
-  ribosome_contrast$other_interaction_genes
-)
-ribosome_member_text = ribosome_member_text[
-  !is.na(ribosome_member_text) & nzchar(ribosome_member_text)
-]
-ribosome_related_genes = sort(
-  unique(
-    unlist(
-      strsplit(
-        ribosome_member_text,
-        ";",
-        fixed = TRUE
-      )
-    )
-  )
-)
-ribosome_related_genes = ribosome_related_genes[
-  nzchar(ribosome_related_genes)
-]
+# Report every first-pass discordant hit, including nonsignificant follow-ups.
+# Join on stable GO ID plus ontology, never on a display term name.
+discordant_summary = significant_go %>%
+  filter(gene_set == "discordant") %>%
+  left_join(
+    class_comparison %>% dplyr::select(
+      ontology, GO.ID, other_interactions, odds_ratio, estimable,
+      comparison_p = fisher_p, comparison_q = fisher_q,
+      comparison_n_tests = n_tests
+    ),
+    by = c("ontology", "GO.ID")
+  ) %>%
+  mutate(significant_both = fisher_q < 0.05 & comparison_q < 0.05) %>%
+  arrange(ontology, fisher_q, GO.ID)
+stopifnot(nrow(discordant_summary) == sum(significant_go$gene_set == "discordant"),
+          !anyNA(discordant_summary$comparison_q),
+          !anyDuplicated(class_comparison[, c("ontology", "GO.ID")]))
+
+########################################
+# MKT1 AND BUL2 DESCRIPTIVE SUMMARY     #
+########################################
 
 marker_parts = strsplit(
   as.character(qtls_aug_analyte_ixn$marker),
@@ -513,25 +400,6 @@ hotspot_windows = data.frame(
   stringsAsFactors = FALSE
 )
 
-class_enrichment_p = function(in_hotspot, n_hotspot, class_total) {
-  outside_class = class_total - in_hotspot
-  outside_total = 64L - n_hotspot
-  table_2x2 = matrix(
-    c(
-      in_hotspot,
-      n_hotspot - in_hotspot,
-      outside_class,
-      outside_total - outside_class
-    ),
-    nrow = 2,
-    byrow = TRUE
-  )
-  fisher.test(
-    table_2x2,
-    alternative = "greater"
-  )$p.value
-}
-
 hotspot_summary_rows = lapply(
   seq_len(nrow(hotspot_windows)),
   function(i) {
@@ -542,7 +410,6 @@ hotspot_summary_rows = lapply(
       qtl_position <= window$locus_end
 
     dat = qtls_aug_analyte_ixn[keep, , drop = FALSE]
-    dat$ribosome_related = dat$gene %in% ribosome_related_genes
 
     n_discordant = sum(dat$bin == "line cross")
     n_mRNA_specific = sum(dat$bin == "mRNA specific")
@@ -563,31 +430,11 @@ hotspot_summary_rows = lapply(
       mRNA_specific_QTLs = n_mRNA_specific,
       protein_specific_QTLs = n_protein_specific,
       same_direction_QTLs = n_same_direction,
-      discordant_ribosome_associated = sum(discordant$ribosome_related),
-      discordant_nonribosome = sum(!discordant$ribosome_related),
       discordant_mRNA_down_protein_up = sum(
         discordant$mRNA_effect < 0 & discordant$protein_effect > 0
       ),
       discordant_mRNA_up_protein_down = sum(
         discordant$mRNA_effect > 0 & discordant$protein_effect < 0
-      ),
-      discordant_enrichment_fisher_p = class_enrichment_p(
-        n_discordant,
-        nrow(dat),
-        expected_sizes[["discordant"]]
-      ),
-      mRNA_specific_enrichment_fisher_p = class_enrichment_p(
-        n_mRNA_specific,
-        nrow(dat),
-        expected_sizes[["mRNA_specific"]]
-      ),
-      protein_specific_enrichment_fisher_p = class_enrichment_p(
-        n_protein_specific,
-        nrow(dat),
-        expected_sizes[["protein_specific"]]
-      ),
-      ribosome_definition = paste0(
-        "Member of >=1 of the six ribosome/translation GO terms in Ribosome comparison"
       ),
       stringsAsFactors = FALSE
     )
@@ -607,7 +454,6 @@ expected_hotspot_counts = data.frame(
   mRNA_specific_QTLs = c(8L, 0L),
   protein_specific_QTLs = c(2L, 9L),
   same_direction_QTLs = c(0L, 1L),
-  discordant_ribosome_associated = c(21L, 0L),
   discordant_mRNA_down_protein_up = c(26L, 1L),
   discordant_mRNA_up_protein_down = c(0L, 0L),
   stringsAsFactors = FALSE
@@ -651,10 +497,10 @@ write.table(
 )
 
 write.table(
-  key_go,
+  discordant_summary,
   file = paste0(
     go_asys,
-    "GO_key_terms.tsv"
+    "GO_discordant_summary.tsv"
   ),
   sep = "\t",
   quote = FALSE,
@@ -662,7 +508,7 @@ write.table(
 )
 
 write.table(
-  ribosome_contrast,
+  class_comparison,
   file = paste0(
     go_asys,
     "GO_discordant_vs_other_interactions.tsv"
@@ -687,8 +533,9 @@ message("")
 message("GO review analysis complete.")
 message("Output directory: ", go_asys)
 message("")
-message("Reviewer-focused GO table:")
-print(key_go, row.names = FALSE)
+message("All significant first-pass discordant terms with class comparisons:")
+print(discordant_summary, row.names = FALSE)
 message("")
 message("MKT1/BUL2 support summary:")
 print(hotspot_summary, row.names = FALSE)
+
