@@ -158,6 +158,23 @@ write_plain_workbook = function(sheets, filename) {
       keepNA = TRUE,
       na.string = "NA"
     )
+    # Excel cannot store numeric infinities. Write only those cells as text,
+    # preserving finite numeric values and the original analysis objects.
+    for (j in seq_along(dat)) {
+      if (!is.numeric(dat[[j]])) next
+      infinite_rows = which(is.infinite(dat[[j]]))
+      for (i in infinite_rows) {
+        openxlsx::writeData(
+          wb,
+          sheet = sheet_name,
+          x = if (dat[[j]][[i]] > 0) "Inf" else "-Inf",
+          startRow = i + 1L,
+          startCol = j,
+          colNames = FALSE,
+          rowNames = FALSE
+        )
+      }
+    }
     openxlsx::freezePane(
       wb,
       sheet = sheet_name,
