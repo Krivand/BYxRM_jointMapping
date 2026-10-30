@@ -90,7 +90,7 @@ def main():
     args.output_directory.mkdir(parents=True, exist_ok=False)
     path = args.output_directory / "rediscovery_predictions_comparisons.tsv"
     with path.open("x", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(result[0]), delimiter="\t", lineterminator="\n")
+        writer = csv.DictWriter(handle, fieldnames=list(result[0]), delimiter="\t", lineterminator="\r\n")
         writer.writeheader()
         writer.writerows(result)
     metadata = {
