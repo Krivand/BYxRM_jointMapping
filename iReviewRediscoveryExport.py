@@ -27,7 +27,10 @@ def export_rows(rows):
     if len(studies) != 10 or set(keyed) != expected:
         raise ValueError("Expected all 90 directed pairs at both effect scales")
     result = []
-    for source, target in sorted({k[:2] for k in keyed}):
+    # Preserve the original ordering by internal study IDs, before display-name mapping.
+    pair_order = sorted({k[:2] for k in keyed}, key=lambda pair: (
+        keyed[pair[0], pair[1], 1]["query"], keyed[pair[0], pair[1], 1]["target"]))
+    for source, target in pair_order:
         full, atten = (keyed[source, target, scale] for scale in (1, 0.8))
         for column in ("target_n", "n_power_qtls", "n_observed_qtls", "observed",
                        "min_target_lod", "max_target_lod"):
@@ -57,11 +60,7 @@ def export_rows(rows):
             predicted_rediscovery_fraction_full_effect=full["expected_actual_first_pass"],
             predicted_rediscovery_fraction_80pct_effect=atten["expected_actual_first_pass"],
             minimum_target_lod=full["min_target_lod"],
-            maximum_target_lod=full["max_target_lod"],
-            predicted_same_direction_rediscovery_fraction_full_effect=full["expected_actual_first_pass"],
-            predicted_same_direction_rediscovery_fraction_80pct_effect=atten["expected_actual_first_pass"],
-            prediction_requires_same_direction="TRUE",
-            prediction_denominator="figure3_matched"))
+            maximum_target_lod=full["max_target_lod"]))
     return result
 
 

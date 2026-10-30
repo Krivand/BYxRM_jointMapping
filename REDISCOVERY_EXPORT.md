@@ -14,10 +14,10 @@ python3 iReviewRediscoveryExport.py /path/to/power/pairwise_actual_threshold_pow
 ```
 
 The destination must be new. The exporter does not rerun mapping or simulations.
-It preserves the original ten columns and appends explicitly named same-direction
-prediction columns, a direction flag, and the denominator name. The explicit
-prediction columns are aliases of the original prediction columns, not a second
-analysis. All probabilities are fractions, not percentages. Observed counts are
+It preserves exactly the original ten columns, their names and their order.
+Both prediction columns already require matching effect direction; no duplicate
+columns or definition fields are added. All probabilities are fractions, not
+percentages. Observed counts are
 recovered from the matched denominator and observed fraction, with integer checks.
 The provenance JSON records input/output hashes. Direction must be verified from
 the generating run: the aggregated input alone cannot establish it.
@@ -37,8 +37,8 @@ The archived generating source in
 `bundle_b303a517e324d839795eb37bbe370f4cf3ce2d7575b8d477a729e59d5f812b10`
 already contains `same_direction_detection` (source SHA-256
 `9bb8781df99341b4737c4db7e3c10e138c3ffab912f4067b142950e8404be7f5`).
-Thus the existing table already incorporates direction; the new columns make
-that definition explicit. The exact original ad hoc export script was not found
+Thus the existing table already incorporates direction. This definition is
+documented here rather than by changing the table. The exact original ad hoc export script was not found
 among the committed Frank review/export scripts; this script records the mapping.
 
 The response-document scatterplots use `historical_gene_overlap` predictions,
