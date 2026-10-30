@@ -1,24 +1,22 @@
 # Preserve the original two manuscript plot blocks; replace predictions only.
 args = commandArgs(TRUE)
+stopifnot(length(args) %in% c(1L, 3L))
 out = args[[1]]
-old = "/PHShome/kv1026/p05/asys/review/power_effect_curve/all_pairs/"
+old = if (length(args) == 3L) args[[2]] else "/PHShome/kv1026/p05/asys/review/power_effect_curve/all_pairs/"
 read_tsv = function(path) read.delim(path, check.names = FALSE, stringsAsFactors = FALSE)
-comparison = read_tsv(paste0(old, "pairwise_observed_vs_power.tsv"))
-attenuation = read_tsv(paste0(old, "pairwise_power_attenuation.tsv"))
-updated = read_tsv("/PHShome_actual/k/kv1026/tools/eris-jobcards/actions/card_1e080f28d4b1c883cb4f66157701e1a7/power/pairwise_actual_threshold_power.tsv")
+comparison = read_tsv(file.path(old, "pairwise_observed_vs_power.tsv"))
+power_file = if (length(args) == 3L) args[[3]] else "/PHShome_actual/k/kv1026/tools/eris-jobcards/actions/card_1e080f28d4b1c883cb4f66157701e1a7/power/pairwise_actual_threshold_power.tsv"
+updated = read_tsv(power_file)
 key = function(d) paste(d$fromData, d$toData, sep = "\r")
 stopifnot(nrow(comparison) == 90L, !anyDuplicated(key(comparison)))
-ai = match(key(comparison), key(attenuation))
-stopifnot(!anyNA(ai))
-attenuation = attenuation[ai, , drop = FALSE]
 for (effect_scale in c(1, 0.8)) {
-  u = updated[updated$denominator == "historical_gene_overlap" & abs(updated$effect_scale - effect_scale) < 1e-12, , drop = FALSE]
+  u = updated[updated$denominator == "figure3_matched" & abs(updated$effect_scale - effect_scale) < 1e-12, , drop = FALSE]
   stopifnot(nrow(u) == 90L, !anyDuplicated(key(u)))
   idx = match(key(comparison), key(u))
   stopifnot(!anyNA(idx))
   u = u[idx, , drop = FALSE]
-  fixed = if (effect_scale == 1) comparison$expectedRediscoveryLOD4_5 else attenuation$expectedRediscoveryLOD4_5_scale0_8
-  stopifnot(max(abs(fixed - u$expected_fixed_lod4_5)) < 1e-10,
+  # Predictions, observed fractions and point sizes must use the same QTL set.
+  stopifnot(all(u$n_power_qtls == u$n_observed_qtls),
             max(abs(comparison$fractionOverlapsWithStrand - u$observed)) < 1e-10,
             all(comparison$numberOfQTLs == u$n_observed_qtls),
             all(is.finite(u$expected_actual_first_pass)))
@@ -116,5 +114,7 @@ p = ggplot2::ggplot(
     filename = "all_pairs_actual_thresholds_scale0_8.png"
   }
   ggplot2::ggsave(file.path(out, filename), plot = p, width = 8, height = 7, dpi = 300)
+  ggplot2::ggsave(file.path(out, sub("\\.png$", ".pdf", filename)),
+                  plot = p, width = 8, height = 7)
   print(summary_row)
 }
