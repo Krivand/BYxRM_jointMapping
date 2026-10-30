@@ -41,7 +41,21 @@ Thus the existing table already incorporates direction. This definition is
 documented here rather than by changing the table. The exact original ad hoc export script was not found
 among the committed Frank review/export scripts; this script records the mapping.
 
-The response-document scatterplots use `historical_gene_overlap` predictions,
-whereas this table uses `figure3_matched`. Their predictions can differ for
-comparisons affected by technical-marker exclusions. Do not silently substitute
-one denominator for the other or describe their values as identical.
+## Matched manuscript figures
+
+Both manuscript scatterplots now use `figure3_matched` predictions, like the
+comparison table and the paired-panel figures. The plotting script verifies that
+prediction denominators, observed denominators and point-size counts agree.
+It preserves the original ggplot layouts and writes both PNG and PDF files.
+
+```bash
+Rscript --vanilla iReviewFrankOriginalFigures.R /path/to/output /path/to/old/all_pairs /path/to/power/pairwise_actual_threshold_power.tsv
+```
+
+The optional input arguments remove dependence on archived absolute paths;
+the original one-argument invocation remains supported. The old all-pairs file
+supplies comparison labels and observed counts, not prediction values.
+No mapping or simulation rerun is required. The original ten-column TSV is
+unchanged. All-90 rounded summaries remain 65.0% / 46.8% predicted and 26.3%
+observed; the Albert full-effect mean is 6.05% (range 1.02–8.92%) and its
+80%-effect mean is 3.37%.
