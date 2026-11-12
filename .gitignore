@@ -12,3 +12,8 @@
 
 # keep the gitignore itself
 !.gitignore
+
+# Keep release documentation and analysis runners visible at the repository root.
+!/*.md
+!/*.py
+!/*.sh

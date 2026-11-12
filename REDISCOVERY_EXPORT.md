@@ -28,18 +28,11 @@ changed upstream results; review those changes separately.
 
 ## Recovered original export
 
-The user-supplied `rediscovery_predictions_comparisons (1).tsv` contains all
-90 comparisons and matches the `figure3_matched` rows from
-`card_1e080f28d4b1c883cb4f66157701e1a7/power/pairwise_actual_threshold_power.tsv`.
-Both prediction columns match exactly as parsed floating-point numbers.
-All ten original columns pass the exporter reference comparison.
-The archived generating source in
-`bundle_b303a517e324d839795eb37bbe370f4cf3ce2d7575b8d477a729e59d5f812b10`
-already contains `same_direction_detection` (source SHA-256
+All ten columns of the archived comparison table agree across all 90 directed
+study pairs with the export from the Figure 3 matched rows. Both prediction
+columns match at full floating-point precision after parsing. The archived
+generating source implements same-direction detection (SHA-256
 `9bb8781df99341b4737c4db7e3c10e138c3ffab912f4067b142950e8404be7f5`).
-Thus the existing table already incorporates direction. This definition is
-documented here rather than by changing the table. The exact original ad hoc export script was not found
-among the committed Frank review/export scripts; this script records the mapping.
 
 ## Matched manuscript figures
 
