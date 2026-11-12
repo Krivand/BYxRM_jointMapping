@@ -24,7 +24,7 @@ aggregate_one = function(inp_dir, out_rda) {
   for (f in files) {
     e = new.env(parent = emptyenv())
     load(f, envir = e)
-    x = e$chunkAssocs  # hard-coded assumption per your note
+    x = e$chunkAssocs
     if (is.null(x)) stop("chunkAssocs missing in: ", f)
 
     if (is.null(agg)) agg = x

@@ -2547,7 +2547,7 @@ studyTracer = function(studies, smeta, suppGenes, fn,
   
   colnames(suppMat) = smeta$study
   
-  # Ensure you are only keeping studies in your metadata
+  # Keep studies present in the metadata
   studies = studies[names(studies) %in% smeta$study]
   
   # Prepare data matrices for signed LOD scores and R-values
@@ -3068,7 +3068,7 @@ mpLinkPlotter = function(data, filename, infix, mode, r = NULL, n = NULL) {
          plot = p_combined, width = 7.5, height = 5)
 }
 
-# --- DRILL: now also stores p-values (LRT like your mapper) -------------------
+# Store likelihood-ratio test p-values for each gene–marker pair.
 drillQTL = function(studies,
                     dfQTL,
                     unionBg,
@@ -3462,7 +3462,7 @@ aggregate_chunks = function(inp_dir, out_rda) {
     x = e$chunkAssocs
     if (is.null(x)) stop("chunkAssocs missing in: ", f)
 
-    # NEW: if chunkAssocs is a length-1 list (your [[1]] wrapper), unwrap it
+    # Unwrap chunkAssocs when stored in a single-element list
     if (is.list(x) && length(x) == 1L) x = x[[1]]
 
     if (!is.data.frame(x)) {

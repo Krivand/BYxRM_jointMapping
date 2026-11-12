@@ -23,3 +23,13 @@ The manuscript's Data sources section identifies the original studies and access
 - The dependence analysis targets the union of 868 joint and 64 strict interaction gene–marker pairs. The model crosses study and segregant random intercepts. Treating normalized segregant labels as the same individual across studies is an assumption of this fit.
 - The power analysis recovers 160 first-pass FULL-map study–chromosome thresholds from the historical log. Relating them to Figure 3 assumes the log corresponds to its QTL tables. The calculation estimates detection at the first-pass cutoff and does not replay conditional mapping or localization. Compare thresholds within the same query set. Scaling source effects to 80% is a sensitivity analysis.
 - `iReviewPower.R` contains the simulation, and `iReviewFrankSimulationFigure.R` produces its calibration figure. The rediscovery export uses predictions and observed counts from the Figure 3 matched query set.
+
+After the review runner completes, use the following commands for the power
+and simulation figures. Supply an existing output directory for the simulation
+figure. Its R script reads the archived first-pass threshold table at the path
+specified in the script. The optional second argument is a saved simulation TSV.
+
+```bash
+Rscript --vanilla iReviewFrankPowerFigures.R /path/to/review/output/power
+Rscript --vanilla iReviewFrankSimulationFigure.R /path/to/figure/output
+```
